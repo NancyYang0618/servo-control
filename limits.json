@@ -1,0 +1,11 @@
+{
+  "hip_straight": 120.0,
+  "knee_straight": 120.0,
+  "hip_sign": 1,
+  "knee_sign": 1,
+  "hip_min": 75.0,
+  "hip_max": 165.0,
+  "knee_min": 75.0,
+  "knee_max": 220.0,
+  "measured_on": "2026-10-21: original directions restored (servo angle DOWN = thigh left/back and shin right/front, per Nancy's pose check); knee allowed -40..+95 after margin"
+}

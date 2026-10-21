@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XIANG Leg Control</title>
+<style>
+:root {
+  --bg: #f6f3ee; --card: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e4e0d8;
+  --accent: #2f6fdb; --hip: #2f6fdb; --knee: #d2453a; --ok: #1f9d55; --warn: #c98400; --err: #d03b3b;
+  --warn-bg: #fff6e0; --err-bg: #fdecec; --info-bg: #eaf2ff; --ghost: #c9c4ba;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17171a; --card: #222226; --ink: #f1f1f3; --muted: #a0a0a8; --line: #34343a;
+    --warn-bg: #3a2f12; --err-bg: #3d1c1c; --info-bg: #1b2a44; --ghost: #4a4a52;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; }
+h1 { font-size: 17px; margin: 0 8px 0 0; letter-spacing: .2px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; background: var(--bg); border: 1px solid var(--line); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.ok { background: var(--ok); } .dot.bad { background: var(--err); } .dot.warn { background: var(--warn); }
+.spacer { flex: 1; }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 7px 12px; border-radius: 9px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { background: var(--err); border-color: var(--err); color: #fff; font-weight: 600; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+main { padding: 16px 18px 40px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr); max-width: 1400px; margin: 0 auto; }
+@media (max-width: 1100px) { main { grid-template-columns: 1fr 1fr; } .log-card { grid-column: 1 / -1; } }
+@media (max-width: 720px) { main { grid-template-columns: 1fr; padding: 12px 12px 30px; } header { padding: 12px; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+#banner { grid-column: 1 / -1; display: grid; gap: 8px; }
+.alert { border-radius: 12px; padding: 10px 14px; border: 1px solid transparent; }
+.alert b { display: block; }
+.alert.error { background: var(--err-bg); border-color: var(--err); }
+.alert.warn { background: var(--warn-bg); border-color: var(--warn); }
+.alert.info { background: var(--info-bg); border-color: var(--accent); }
+.alert .hint { color: var(--muted); font-size: 13px; }
+.alert.allgood { background: var(--card); border-color: var(--ok); }
+.joint .big { font-size: 34px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.joint .sub { color: var(--muted); margin-bottom: 8px; }
+.joint input[type=range] { width: 100%; margin: 6px 0 2px; }
+.rangelbl { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+.jog { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.jog .grp { display: flex; flex-direction: column; gap: 6px; }
+.jog .grp span { font-size: 12px; color: var(--muted); }
+.jog .grp div { display: flex; gap: 6px; }
+.jog button { flex: 1; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.chip.bad { border-color: var(--err); color: var(--err); } .chip.warnc { border-color: var(--warn); color: var(--warn); }
+#leg { width: 100%; height: 300px; display: block; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+select, input[type=number] { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.progress { height: 8px; background: var(--bg); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+.progress div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.muted { color: var(--muted); font-size: 13px; }
+.log { max-height: 520px; overflow: auto; display: grid; gap: 6px; }
+.ev { border-left: 4px solid var(--line); padding: 4px 8px; }
+.ev.error { border-color: var(--err); } .ev.warn { border-color: var(--warn); } .ev.info { border-color: var(--accent); }
+.ev .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; margin-right: 6px; }
+.ev .hint { color: var(--muted); font-size: 12.5px; }
+.lvl { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-right: 6px; }
+.lvl.error { color: var(--err); } .lvl.warn { color: var(--warn); } .lvl.info { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>XIANG leg control</h1>
+  <span class="pill" id="conn"><span class="dot"></span><span>connecting...</span></span>
+  <button id="btnReconnect">Reconnect</button>
+  <span class="spacer"></span>
+  <button id="btnStraight">Straight</button>
+  <button id="btnTqOn">Torque on</button>
+  <button class="danger" id="btnEstop" title="Stops any pattern and makes both motors limp">STOP + torque off</button>
+</header>
+
+<main>
+  <section id="banner"></section>
+
+  <div class="card joint" id="card-hip"></div>
+  <div class="card joint" id="card-knee"></div>
+
+  <div class="card">
+    <h2>Leg pose <span class="muted" style="text-transform:none;letter-spacing:0">front of the robot is to the right</span></h2>
+    <svg id="leg" viewBox="-130 -20 260 210" aria-label="Live drawing of the leg pose"></svg>
+    <div class="muted">Solid: measured. Grey outline: target.</div>
+  </div>
+
+  <div class="card">
+    <h2>Motion patterns</h2>
+    <div class="row">
+      <select id="patName"></select>
+      <label class="muted">cycles <input type="number" id="patCycles" value="2" min="1" max="50" style="width:64px"></label>
+      <label class="muted">speed
+        <select id="patSpeed"><option>0.25</option><option selected>0.5</option><option>0.75</option><option>1.0</option></select>
+      </label>
+    </div>
+    <div class="muted" id="patInfo" style="margin-bottom:10px"></div>
+    <div class="row">
+      <button class="primary" id="btnRun">Run pattern</button>
+      <button id="btnStop">Stop (hold position)</button>
+    </div>
+    <div class="progress"><div id="patBar"></div></div>
+    <div class="muted" id="patStatus" style="margin-top:6px">idle</div>
+  </div>
+
+  <div class="card log-card">
+    <h2>Event log <span class="spacer"></span><button id="btnClear" style="padding:3px 8px;font-size:12px">clear</button></h2>
+    <div class="log" id="log"></div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const post = (url, body = {}) => fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}).then(poll);
+let S = null, dragging = {hip: false, knee: false}, built = false, lastPatterns = "";
+
+function fmt(v, d = 1) { return v === null || v === undefined ? "--" : Number(v).toFixed(d); }
+
+function buildJoint(j, st) {
+  const el = $("#card-" + j);
+  const col = j === "hip" ? "var(--hip)" : "var(--knee)";
+  el.innerHTML = `
+    <h2><span class="dot" id="${j}-dot"></span>${j === "hip" ? "Hip" : "Knee"} <span class="muted" style="text-transform:none;letter-spacing:0">motor ID ${st.id}</span></h2>
+    <div class="big" id="${j}-ang" style="color:${col}">--</div>
+    <div class="sub" id="${j}-sub">--</div>
+    <input type="range" id="${j}-slider" min="${st.min}" max="${st.max}" step="1" value="${st.straight}" aria-label="${j} target angle">
+    <div class="rangelbl"><span>${fmt(st.min,0)} (${st.words[0]})</span><span id="${j}-tgt">target --</span><span>${fmt(st.max,0)} (${st.words[1]})</span></div>
+    <div class="jog">
+      <div class="grp"><span>${st.words[0]}</span><div>
+        <button data-j="${j}" data-d="-5">5&deg;</button><button data-j="${j}" data-d="-1">1&deg;</button></div></div>
+      <div class="grp"><span>${st.words[1]}</span><div>
+        <button data-j="${j}" data-d="1">1&deg;</button><button data-j="${j}" data-d="5">5&deg;</button></div></div>
+    </div>
+    <div class="chips"><span class="chip" id="${j}-v">-- V</span><span class="chip" id="${j}-t">-- C</span><span class="chip" id="${j}-tq">torque --</span></div>`;
+  const sl = $(`#${j}-slider`);
+  sl.addEventListener("pointerdown", () => dragging[j] = true);
+  sl.addEventListener("input", () => { $(`#${j}-tgt`).textContent = "target " + sl.value; });
+  sl.addEventListener("change", () => { dragging[j] = false; post("/api/move", {joint: j, angle: Number(sl.value), ms: 800}); });
+  el.querySelectorAll("button[data-j]").forEach(b => b.onclick = () => post("/api/jog", {joint: b.dataset.j, delta: Number(b.dataset.d)}));
+}
+
+function legPoints(hipAng, kneeAng, hipSt, kneeSt) {
+  const L1 = S.geometry.thigh, L2 = S.geometry.shin;
+  const a = (hipAng - hipSt) * Math.PI / 180;                 // servo down -> thigh to the left (back)
+  const b = a - (kneeAng - kneeSt) * Math.PI / 180;           // knee servo down -> shin to the right (front)
+  const k = [L1 * Math.sin(a), L1 * Math.cos(a)];
+  const f = [k[0] + L2 * Math.sin(b), k[1] + L2 * Math.cos(b)];
+  return [[0, 0], k, f];
+}
+
+function drawLeg() {
+  const H = S.joints.hip, K = S.joints.knee, svg = $("#leg");
+  if (H.angle == null || K.angle == null || !H.ok || !K.ok) { svg.innerHTML = `<text x="0" y="90" text-anchor="middle" fill="var(--muted)">no angle data</text>`; return; }
+  const p = legPoints(H.angle, K.angle, H.straight, K.straight);
+  const t = legPoints(H.target ?? H.angle, K.target ?? K.angle, H.straight, K.straight);
+  const line = (a, b, c, w, extra = "") => `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${c}" stroke-width="${w}" stroke-linecap="round" ${extra}/>`;
+  svg.innerHTML =
+    line([-120, 175], [120, 175], "var(--line)", 2) +
+    line(t[0], t[1], "var(--ghost)", 14, 'stroke-dasharray="2 5"') + line(t[1], t[2], "var(--ghost)", 14, 'stroke-dasharray="2 5"') +
+    line(p[0], p[1], "var(--hip)", 12) + line(p[1], p[2], "var(--knee)", 10) +
+    `<rect x="-16" y="-14" width="32" height="14" rx="3" fill="var(--muted)"/>` +
+    `<circle cx="0" cy="0" r="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/>` +
+    `<circle cx="${p[1][0]}" cy="${p[1][1]}" r="6" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/>` +
+    `<circle cx="${p[2][0]}" cy="${p[2][1]}" r="7" fill="var(--ok)"/>` +
+    `<text x="118" y="168" text-anchor="end" font-size="11" fill="var(--muted)">front &rarr;</text>`;
+}
+
+function render() {
+  const c = $("#conn");
+  c.querySelector(".dot").className = "dot " + (S.connected ? "ok" : "bad");
+  c.querySelector("span:last-child").textContent = S.connected ? "connected " + S.port : "not connected";
+
+  // banner: current problems
+  const ban = $("#banner");
+  ban.innerHTML = S.problems.length
+    ? S.problems.map(([lvl, msg, hint]) => `<div class="alert ${lvl}"><b>${msg}</b><span class="hint">${hint}</span></div>`).join("")
+    : `<div class="alert allgood"><b>All good.</b><span class="hint">Both motors answer, supply and temperature are in range.</span></div>`;
+
+  if (!built) { for (const j of ["hip", "knee"]) buildJoint(j, S.joints[j]); built = true; }
+  for (const j of ["hip", "knee"]) {
+    const st = Object.assign({}, S.joints[j]);
+    if (!st.ok) Object.assign(st, {angle: null, vin: null, temp: null, torque: null});   // never show stale readings
+    $(`#${j}-dot`).className = "dot " + (st.ok ? "ok" : "bad");
+    $(`#${j}-ang`).textContent = st.angle == null ? "--" : fmt(st.angle) + "°";
+    $(`#${j}-sub`).textContent = !S.joints[j].ok ? "not answering" : st.angle == null ? "no reading" : `${fmt(st.from_straight)}° from straight · ${st.direction}`;
+    const sl = $(`#${j}-slider`);
+    sl.min = st.min; sl.max = st.max;
+    if (!dragging[j] && st.target != null) { sl.value = st.target; $(`#${j}-tgt`).textContent = "target " + fmt(st.target, 0); }
+    const v = $(`#${j}-v`); v.textContent = fmt(st.vin, 2) + " V";
+    v.className = "chip" + (st.vin == null ? "" : (st.vin < 4.5 || st.vin > 8.4) ? " bad" : st.vin < 6 ? " warnc" : "");
+    const t = $(`#${j}-t`); t.textContent = (st.temp ?? "--") + " C";
+    t.className = "chip" + (st.temp >= 60 ? " bad" : st.temp >= 55 ? " warnc" : "");
+    $(`#${j}-tq`).textContent = "torque " + (st.torque == null ? "--" : st.torque ? "on" : "OFF (limp)");
+  }
+  drawLeg();
+
+  // patterns
+  const names = S.patterns.map(p => p.name).join(",");
+  if (names !== lastPatterns) {
+    $("#patName").innerHTML = S.patterns.map(p => `<option value="${p.name}">${p.name}</option>`).join("");
+    lastPatterns = names; showInfo();
+  }
+  const P = S.pattern, run = P.running;
+  $("#btnRun").disabled = run || !S.connected;
+  const frac = run && P.steps ? ((P.cycle - 1) * P.steps + P.step) / (P.cycles * P.steps) : 0;
+  $("#patBar").style.width = (frac * 100) + "%";
+  $("#patStatus").textContent = run ? `running '${P.name}': cycle ${P.cycle} of ${P.cycles}, step ${P.step} of ${P.steps}` : "idle";
+
+  // log
+  $("#log").innerHTML = S.events.map(e =>
+    `<div class="ev ${e.level}"><span class="t">${e.t}</span><span class="lvl ${e.level}">${e.level}</span>${e.msg}` +
+    (e.hint ? `<div class="hint">${e.hint}</div>` : "") + `</div>`).join("") || `<div class="muted">No events yet.</div>`;
+}
+
+function showInfo() {
+  const p = (S?.patterns || []).find(p => p.name === $("#patName").value);
+  $("#patInfo").textContent = p ? p.info : "";
+}
+
+async function poll() {
+  try {
+    S = await (await fetch("/api/state")).json();
+    render();
+  } catch (e) {
+    $("#banner").innerHTML = `<div class="alert error"><b>The control panel program is not running.</b><span class="hint">Start it again in Terminal: python3 08_control_panel.py</span></div>`;
+  }
+}
+
+$("#btnReconnect").onclick = () => post("/api/connect");
+$("#btnStraight").onclick = () => post("/api/straight");
+$("#btnTqOn").onclick = () => post("/api/torque", {on: true});
+$("#btnEstop").onclick = () => post("/api/estop");
+$("#btnRun").onclick = () => post("/api/pattern", {name: $("#patName").value, cycles: Number($("#patCycles").value), speed: Number($("#patSpeed").value)});
+$("#btnStop").onclick = () => post("/api/stop");
+$("#btnClear").onclick = () => post("/api/clear");
+$("#patName").onchange = showInfo;
+document.addEventListener("keydown", e => { if (e.key === "Escape") post("/api/estop"); });
+poll(); setInterval(poll, 400);
+</script>
+</body>
+</html>

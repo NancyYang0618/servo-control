@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# virtual environments
+legenv/
+.venv/
+
+# test-run data and plots (kept locally, not published)
+logs/
+
+# macOS
+.DS_Store
