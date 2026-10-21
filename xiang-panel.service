@@ -1,0 +1,28 @@
+# Starts the XIANG leg control panel automatically when the Raspberry Pi boots.
+# Then open http://xiang.local:8765 from a laptop on the same Wi-Fi.
+#
+# Install (on the Pi):
+#   sudo cp ~/Step4_leg_control/xiang-panel.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now xiang-panel
+# Useful:
+#   systemctl status xiang-panel          is it running?
+#   journalctl -u xiang-panel -n 30       its recent messages (errors show here too)
+#   sudo systemctl restart xiang-panel    restart after changing the code
+#   sudo systemctl disable --now xiang-panel   stop it starting at boot
+
+[Unit]
+Description=XIANG leg control panel (web page on port 8765)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nancyyang
+WorkingDirectory=/home/nancyyang/Step4_leg_control
+ExecStart=/home/nancyyang/Step4_leg_control/legenv/bin/python 08_control_panel.py --host all
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

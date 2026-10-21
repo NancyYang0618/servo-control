@@ -21,6 +21,7 @@ using the [PyLX-16A](https://github.com/ethanlipson/PyLX-16A) library.
 | `04_disconnect_test.py` | Demonstrates catching an unplugged motor and recovering |
 | `06_test_all_patterns.py` | Run every pattern and print tracking error and temperature |
 | `05_plot_log.py`, `05b_plot_extremes.py` | Plots for slides from the logs |
+| `xiang-panel.service` | systemd service that starts the control panel when the Pi boots |
 | `GUIDE.md` | Step-by-step guide: wiring, setup on the Pi, and which rubric each step covers |
 
 ## Quick start
@@ -31,12 +32,13 @@ power terminal; BusLinker -> hip servo (ID 1) -> knee servo (ID 2); BusLinker US
 ```bash
 python3 -m venv legenv
 source legenv/bin/activate
-pip3 install pylx16a pyserial matplotlib
+pip3 install pyserial matplotlib
+pip3 install --no-deps pylx16a      # skip its PyQt6 GUI extra (not needed, very large)
 python3 08_control_panel.py
 ```
 
-Then open http://localhost:8765. On a Raspberry Pi, start it with `--host 0.0.0.0` and open
-`http://<pi-address>:8765` from your laptop. The BusLinker port is found automatically
+Then open http://localhost:8765. On a Raspberry Pi, start it with `--host all` and open
+`http://xiang.local:8765` from your laptop. The BusLinker port is found automatically
 (`/dev/cu.usbserial-*` on a Mac, `/dev/ttyUSB0` on the Pi); override with `XIANG_PORT=...`.
 
 ## Safety built in

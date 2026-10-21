@@ -12,7 +12,7 @@ capture for the slides. Paste anything that looks wrong back to Claude.
 | `03_motions.py` | Eight motion patterns: swing, curl, wave, squat, walk, crouch, circle, kick. |
 | `04_disconnect_test.py` | Shows the code catching an unplugged motor and recovering. |
 | `05_plot_log.py` | Turns any log into a plot for the slides. |
-| `08_control_panel.py` | **Browser control panel**: sliders, nudge buttons, patterns, live leg drawing, and plain-language error messages. Open http://localhost:8765 after starting it. On the Pi: `python3 08_control_panel.py --host 0.0.0.0`, then open http://PI-ADDRESS:8765 on your laptop. |
+| `08_control_panel.py` | **Browser control panel**: sliders, nudge buttons, patterns, live leg drawing, and plain-language error messages. Open http://localhost:8765 after starting it. On the Pi: `python3 08_control_panel.py --host all`, then open http://xiang.local:8765 on your laptop. |
 
 ---
 
@@ -43,7 +43,8 @@ cd ~/Step4_leg_control
 python3 --version
 python3 -m venv legenv
 source legenv/bin/activate
-pip3 install pylx16a pyserial matplotlib
+pip3 install pyserial matplotlib
+pip3 install --no-deps pylx16a      # skip its PyQt6 GUI extra (not needed, very large)
 sudo usermod -aG dialout $USER
 ```
 
@@ -155,6 +156,22 @@ scp -r pi@raspberrypi.local:~/Step4_leg_control/logs ~/Desktop/"3D Printed Robot
 
 Then ask Claude to make the plots and pull frames out of your videos for the frame
 sequence slide.
+
+## Running the leg without the laptop cable (Pi on Wi-Fi)
+
+The Pi joins the phone hotspot "Nancy" by itself at start-up, as long as the iPhone's
+**Settings -> Personal Hotspot** screen is open with **Maximize Compatibility** on (iPhones hide
+the hotspot from non-Apple devices otherwise). Join the Mac to the same hotspot.
+
+The control panel starts automatically at boot (`xiang-panel.service`), so:
+1. power the Pi (5 V / 3 A supply), BusLinker in a Pi USB-A port, battery + converter on;
+2. wait about 30 seconds;
+3. open **http://xiang.local:8765** on the Mac and press Reconnect if the BusLinker was plugged in late.
+
+SSH from the Mac: `ssh nancyyang@xiang.local` (key login, no password).
+Service commands are listed at the top of `xiang-panel.service`.
+If the Pi cannot join Wi-Fi, plug its USB-C into the Mac: USB network mode is enabled, and
+`xiang.local` answers over the cable too.
 
 ## Rubric map (one leg)
 

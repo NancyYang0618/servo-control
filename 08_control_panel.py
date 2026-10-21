@@ -3,8 +3,8 @@ XIANG leg control panel: drive the two servos from a web page, with plain-langua
 feedback on every error.
 
     python3 08_control_panel.py                  # then open http://localhost:8765
-    python3 08_control_panel.py --host 0.0.0.0   # on the Pi, to open it from your laptop
-                                                 #   at http://<pi-address>:8765
+    python3 08_control_panel.py --host all       # on the Pi, to open it from your laptop
+                                                 #   at http://xiang.local:8765 (IPv4 and IPv6)
 
 Uses the same settings as the other scripts: leg_config.py (IDs, timing) and limits.json
 (straight position, directions, safe range). Patterns come from 03_motions.py.
@@ -16,6 +16,7 @@ import glob
 import importlib
 import json
 import os
+import socket
 import threading
 import time
 from collections import deque
@@ -498,15 +499,36 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True})
 
 
+class DualStackServer(ThreadingHTTPServer):
+    """Listens on IPv6 AND IPv4 at once. Needed on phone hotspots that give the laptop
+    an IPv6-only connection (the laptop could not reach an IPv4-only server)."""
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except OSError:
+            pass
+        super().server_bind()
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="127.0.0.1 = this computer only; 'all' = reachable from other devices (IPv4 + IPv6)")
     ap.add_argument("--port", type=int, default=8765)
     a = ap.parse_args()
     PANEL.connect()
     threading.Thread(target=PANEL.monitor, daemon=True).start()
-    print(f"XIANG control panel: open http://{'localhost' if a.host == '127.0.0.1' else a.host}:{a.port}", flush=True)
-    ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
+    if a.host in ("all", "::", "0.0.0.0"):
+        server = DualStackServer(("::", a.port), Handler)
+        name = socket.gethostname()
+        print(f"XIANG control panel: open http://{name}.local:{a.port} from another device "
+              f"(or http://localhost:{a.port} here)", flush=True)
+    else:
+        server = ThreadingHTTPServer((a.host, a.port), Handler)
+        print(f"XIANG control panel: open http://{'localhost' if a.host == '127.0.0.1' else a.host}:{a.port}", flush=True)
+    server.serve_forever()
 
 
 if __name__ == "__main__":
