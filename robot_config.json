@@ -1,0 +1,19 @@
+{
+  "note": "XIANG full robot, 8 LX-16A servos. 'home' = servo angle with every leg straight (saved 2026-11-10 from the robot standing straight). Angles are servo degrees 0..240. Change home with: python3 11_home.py --save-current",
+  "servos": {
+    "FL_hip":  {"id": 1, "home": 212.6},
+    "FL_knee": {"id": 2, "home": 286.1},
+    "FR_hip":  {"id": 3, "home": 120.2},
+    "FR_knee": {"id": 4, "home": 116.9},
+    "RL_hip":  {"id": 5, "home": 115.9},
+    "RL_knee": {"id": 6, "home": 134.9},
+    "RR_hip":  {"id": 7, "home": 159.4},
+    "RR_knee": {"id": 8, "home": 114.7}
+  },
+  "swing_deg": {"hip": 40, "knee": 60},
+  "servo_limits_deg": [5, 235],
+  "home_speed_deg_s": 30,
+  "pose_ok_deg": 10,
+  "volts": {"refuse": 4.5, "low": 6.0, "high": 8.4, "block": 8.8},
+  "temp_c": {"warn": 55, "stop": 60}
+}

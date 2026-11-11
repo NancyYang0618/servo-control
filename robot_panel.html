@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XIANG Robot Panel</title>
+<style>
+  :root { --bg:#FAF4EC; --card:#fff; --ink:#2b2622; --muted:#7a6f66; --line:#e6dccf;
+          --red:#c8372d; --amber:#b7791f; --green:#2f855a; --blue:#2b6cb0; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.4 "Poppins", system-ui, -apple-system, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:14px 16px;
+           border-bottom:1px solid var(--line); background:#fff8ef; position:sticky; top:0; z-index:5; }
+  h1 { font-size:20px; margin:0 12px 0 0; letter-spacing:.5px; }
+  .pill { padding:3px 10px; border-radius:99px; font-size:13px; background:#eee; }
+  .pill.ok { background:#dff3e6; color:var(--green); } .pill.bad { background:#fbe1df; color:var(--red); }
+  .pill.busy { background:#e3edf9; color:var(--blue); }
+  button { font:inherit; border:1px solid var(--line); background:#fff; border-radius:8px;
+           padding:6px 12px; cursor:pointer; }
+  button:hover { border-color:#bfae99; } button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+  button.stop { background:var(--red); color:#fff; border-color:var(--red); font-weight:600; }
+  .spacer { flex:1; }
+  main { padding:16px; max-width:1200px; margin:0 auto; }
+  #problems div { padding:9px 12px; border-radius:8px; margin-bottom:8px; }
+  .error { background:#fbe1df; } .warn { background:#fdf0d5; } .info { background:#e3edf9; }
+  .hint { color:var(--muted); font-size:13px; }
+  .legs { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; margin:12px 0 18px; }
+  @media (max-width:760px) { .legs { grid-template-columns:1fr; } }
+  .leg { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .leg h2 { font-size:16px; margin:0 0 6px; display:flex; justify-content:space-between; align-items:center; }
+  .joint { border-top:1px solid var(--line); padding:9px 0 6px; }
+  .jhead { display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; }
+  .jname { font-weight:600; min-width:96px; }
+  .big { font-size:20px; font-variant-numeric:tabular-nums; }
+  .small { font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .on { color:var(--green); font-weight:600; } .off { color:var(--muted); }
+  .locked { color:var(--red); font-weight:600; }
+  .controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:6px; }
+  .controls input[type=range] { flex:1; min-width:140px; }
+  .controls button { padding:4px 9px; }
+  table { border-collapse:collapse; width:100%; background:#fff; border:1px solid var(--line); border-radius:10px;
+          overflow:hidden; font-size:14px; }
+  th, td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#fff8ef; }
+  .PASS { color:var(--green); font-weight:600; } .FAIL { color:var(--red); font-weight:600; }
+  .SKIPPED, .STOPPED { color:var(--amber); font-weight:600; }
+  section h3 { margin:18px 0 8px; font-size:16px; }
+  #log div { padding:5px 8px; border-bottom:1px solid var(--line); font-size:14px; }
+  #log .t { color:var(--muted); margin-right:6px; font-variant-numeric:tabular-nums; }
+  .table-wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>XIANG</h1>
+  <span id="conn" class="pill">...</span>
+  <span id="volts" class="pill">supply ?</span>
+  <span id="busy" class="pill busy" hidden></span>
+  <span class="spacer"></span>
+  <button onclick="post('/api/connect')">Reconnect</button>
+  <button onclick="post('/api/boot_test',{motion:false})">Boot test</button>
+  <button onclick="ask('Boot test with wiggle: each servo moves 4 degrees and back, one at a time. Robot on its stand?') && post('/api/boot_test',{motion:true})">Boot test + wiggle</button>
+  <button class="primary" onclick="ask('Home all legs: one leg at a time, slowly, to the saved home angles. Robot on its stand?') && post('/api/home',{})">Home all</button>
+  <button onclick="post('/api/stop')">Stop</button>
+  <button class="stop" onclick="post('/api/off')">Motors OFF</button>
+</header>
+<main>
+  <div id="problems"></div>
+  <div class="legs" id="legs"></div>
+
+  <section>
+    <h3 id="testTitle">Test results</h3>
+    <div class="table-wrap"><table id="tests"><tr><td class="hint">No test run yet.</td></tr></table></div>
+  </section>
+
+  <section>
+    <h3>Home position</h3>
+    <p class="hint">Stand the robot with every leg straight (by hand, motors off), then save. This replaces the home
+      angle of all 8 servos in robot_config.json.</p>
+    <button onclick="ask('Save the CURRENT angle of all 8 servos as their new home?') && post('/api/save_home')">Save pose as home</button>
+  </section>
+
+  <section>
+    <h3>Messages <button onclick="post('/api/clear')" style="font-size:12px;padding:2px 8px">clear</button></h3>
+    <div id="log" style="background:#fff;border:1px solid var(--line);border-radius:10px;max-height:320px;overflow:auto"></div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let S = null, dragging = null, built = false;
+
+function ask(msg) { return confirm(msg); }
+async function post(url, body) {
+  try {
+    await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
+  } catch (e) { showOffline(); }
+  setTimeout(load, 150);
+}
+function showOffline() {
+  $('#conn').className = 'pill bad'; $('#conn').textContent = 'panel unreachable';
+}
+const f1 = x => (x === null || x === undefined) ? '-' : Number(x).toFixed(1);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function build() {
+  const legs = $('#legs'); legs.innerHTML = '';
+  for (const leg of S.legs) {
+    const div = document.createElement('div'); div.className = 'leg';
+    let h = `<h2><span>${S.leg_names[leg]} <span class="small">(${leg})</span></span>
+      <button onclick="ask('Home the ${S.leg_names[leg]} leg?') && post('/api/home',{legs:['${leg}']})">Home leg</button></h2>`;
+    for (const part of ['hip','knee']) {
+      const j = `${leg}_${part}`;
+      h += `<div class="joint" id="j_${j}">
+        <div class="jhead"><span class="jname">${part} <span class="small" id="id_${j}"></span></span>
+          <span class="big" id="ang_${j}">-</span>
+          <span class="small" id="fh_${j}"></span>
+          <span class="small" id="mot_${j}"></span>
+          <span class="small" id="vt_${j}"></span></div>
+        <div class="controls">
+          <button onclick="nudge('${j}',-5)">-5</button><button onclick="nudge('${j}',-1)">-1</button>
+          <input type="range" id="sl_${j}" step="0.5"
+            onpointerdown="dragging='${j}'" onchange="moveTo('${j}',this.value)" onpointerup="dragging=null">
+          <button onclick="nudge('${j}',1)">+1</button><button onclick="nudge('${j}',5)">+5</button>
+          <button onclick="post('/api/blink',{joint:'${j}'})" title="Flash this servo's LED">find</button>
+        </div></div>`;
+    }
+    div.innerHTML = h; legs.appendChild(div);
+  }
+  built = true;
+}
+function nudge(j, d) { post('/api/nudge', {joint:j, delta:d}); }
+function moveTo(j, v) { dragging = null; post('/api/move', {joint:j, angle:parseFloat(v)}); }
+
+function render() {
+  if (!built) build();
+  $('#conn').className = 'pill ' + (S.connected ? 'ok' : 'bad');
+  $('#conn').textContent = S.connected ? `connected ${S.port}` : 'not connected';
+  const v = S.vmin;
+  $('#volts').className = 'pill ' + (v === null ? '' : (v < 6 || v > 8.4 ? 'bad' : 'ok'));
+  $('#volts').textContent = v === null ? 'supply ?' : `supply ${v.toFixed(2)} V`;
+  $('#busy').hidden = !S.busy; $('#busy').textContent = S.busy ? `running: ${S.busy}` : '';
+  document.querySelectorAll('header button, .leg button, section button').forEach(b => {
+    if (!['Stop','Motors OFF','Reconnect'].includes(b.textContent)) b.disabled = !!S.busy || !S.connected;
+  });
+
+  $('#problems').innerHTML = S.problems.map(([lvl,msg,hint]) =>
+    `<div class="${lvl}"><b>${esc(msg)}</b> <span class="hint">${esc(hint)}</span></div>`).join('');
+
+  for (const [j, st] of Object.entries(S.joints)) {
+    $(`#id_${j}`).textContent = st.id !== undefined ? `ID ${st.id}` : '';
+    $(`#ang_${j}`).textContent = st.ok ? `${f1(st.angle)}°` : 'no answer';
+    $(`#fh_${j}`).textContent = st.from_home !== undefined ? `${st.from_home >= 0 ? '+' : ''}${f1(st.from_home)}° from home (${f1(st.home)})` : '';
+    const mot = $(`#mot_${j}`);
+    if (st.holdable === false) { mot.className = 'locked'; mot.textContent = 'LOCKED: home out of range'; }
+    else { mot.className = st.motor ? 'on' : 'off'; mot.textContent = st.motor ? 'motor on' : 'motor off'; }
+    $(`#vt_${j}`).textContent = st.ok ? `${f1(st.volts)} V · ${st.temp} C` : '';
+    const sl = $(`#sl_${j}`);
+    if (st.min !== undefined) { sl.min = st.min; sl.max = st.max; }
+    sl.disabled = !st.holdable || !!S.busy || !S.connected;
+    if (dragging !== j) sl.value = st.target ?? st.angle ?? st.home ?? 120;
+  }
+
+  const T = S.last_test;
+  if (T) {
+    $('#testTitle').textContent = `Test results: ${T.kind} at ${T.time}`;
+    $('#tests').innerHTML = '<tr><th>Joint</th><th>ID</th><th>Angle</th><th>Home</th><th>Result</th><th>Notes</th></tr>' +
+      T.rows.map(r => `<tr><td>${esc(r.joint.replace('_',' '))}</td><td>${r.id}</td>
+        <td>${f1(r.end ?? r.angle)}</td><td>${f1(r.home)}</td>
+        <td class="${r.result}">${r.result}</td><td class="hint">${esc((r.notes||[]).join('; '))}</td></tr>`).join('');
+  }
+  $('#log').innerHTML = S.events.map(e =>
+    `<div class="${e.level}"><span class="t">${e.t}</span>${esc(e.msg)} <span class="hint">${esc(e.hint||'')}</span></div>`).join('')
+    || '<div class="hint">No messages.</div>';
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/state', {cache:'no-store'});
+    S = await r.json(); render();
+  } catch (e) { showOffline(); }
+}
+load(); setInterval(load, 1000);
+</script>
+</body>
+</html>

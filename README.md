@@ -5,6 +5,33 @@ Python control code for one leg of **XIANG**, a 3D printed quadruped elephant ro
 servos (hip and knee), driven through the **BusLinker** board from a Mac or a Raspberry Pi,
 using the [PyLX-16A](https://github.com/ethanlipson/PyLX-16A) library.
 
+## Full robot: 4 legs, 8 servos
+
+| ID | Joint | | ID | Joint |
+|---|---|---|---|---|
+| 1 | front-left hip | | 5 | rear-left hip |
+| 2 | front-left knee | | 6 | rear-left knee |
+| 3 | front-right hip | | 7 | rear-right hip |
+| 4 | front-right knee | | 8 | rear-right knee |
+
+| File | What it does |
+|---|---|
+| `12_robot_panel.py` + `robot_panel.html` | **Robot control panel** (starts at boot): every joint with live angle, distance from home, motor on/off, voltage and temperature; slider, nudge and "find" (LED flash) per joint; Boot test, Home all / Home leg, Stop, Motors OFF; plain-language errors |
+| `10_boot_test.py` | Power-on self test. Stage 1 reads every servo (answers, 6 to 8.4 V, temperature, angle readable, home holdable); `--motion` adds stage 2, a 4 degree wiggle per servo, one at a time |
+| `11_home.py` | Homing: one leg at a time at 30 deg/s to the saved home angles. `--save-current` saves the present pose as home |
+| `09_bus_tool.py` | Scan the bus, flash a servo's LED, renumber servos. Read only, never switches a motor on |
+| `robot.py` | Shared core: raw LX-16A protocol (no motor switches on until a move is asked for), boot test and homing |
+| `robot_config.json` | IDs, home angles, safe swing around home, voltage and temperature limits |
+
+Every first move holds the joint exactly where it is before moving it, so switching a motor on
+never makes it jump. A joint whose home is outside the servo's 0 to 240 degree range is locked
+(its motor stays off) until it is re-mounted and home is saved again.
+
+## One-leg test scripts (Step 4)
+
+The scripts below were written for a single leg (hip ID 1, knee ID 2). On the full robot, IDs
+1 and 2 are the front-left leg; use the robot panel instead.
+
 ## What's here
 
 | File | What it does |
