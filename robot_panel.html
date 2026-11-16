@@ -29,14 +29,29 @@
   .legs { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; margin:12px 0 18px; }
   @media (max-width:760px) { .legs { grid-template-columns:1fr; } }
   .leg { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
-  .leg h2 { font-size:16px; margin:0 0 6px; display:flex; justify-content:space-between; align-items:center; }
-  .joint { border-top:1px solid var(--line); padding:9px 0 6px; }
-  .jhead { display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; }
-  .jname { font-weight:600; min-width:96px; }
-  .big { font-size:20px; font-variant-numeric:tabular-nums; }
-  .small { font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
-  .on { color:var(--green); font-weight:600; } .off { color:var(--muted); }
-  .locked { color:var(--red); font-weight:600; }
+  .leg h2 { font-size:16px; margin:0 0 8px; display:flex; justify-content:space-between; align-items:center; }
+  .motors { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:520px) { .motors { grid-template-columns:1fr; } }
+  .motor { border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:var(--bg); }
+  .motor.hip { --c:#c0562b; } .motor.knee { --c:#2b6cb0; }
+  .mtitle { display:flex; align-items:center; gap:6px; font-weight:600; font-size:13px; text-transform:uppercase;
+            letter-spacing:.6px; color:var(--muted); }
+  .mtitle .dot { width:9px; height:9px; border-radius:50%; background:#bbb; }
+  .mtitle .dot.ok { background:var(--green); } .mtitle .dot.bad { background:var(--red); }
+  .big { font-size:30px; font-weight:600; color:var(--c); font-variant-numeric:tabular-nums; line-height:1.15; }
+  .sub { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; min-height:16px; }
+  .motor input[type=range] { width:100%; margin:8px 0 2px; accent-color:var(--c); }
+  .rangelbl { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+  .rangelbl .tgt { color:var(--c); font-weight:600; }
+  .jog { display:flex; justify-content:space-between; gap:6px; margin-top:6px; }
+  .jog span { display:flex; gap:3px; }
+  .jog button { padding:3px 0; min-width:31px; font-size:13px; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .chip { font-size:12px; padding:2px 8px; border-radius:99px; background:#fff; border:1px solid var(--line); }
+  .chip.bad { background:#fbe1df; border-color:#f3b8b2; } .chip.warnc { background:#fdf0d5; border-color:#f0d398; }
+  .chip.on { background:#dff3e6; border-color:#b4e0c3; }
+  .motor details { margin-top:7px; font-size:13px; }
+  .motor summary { cursor:pointer; color:var(--muted); }
   .controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:6px; }
   .controls input[type=range] { flex:1; min-width:140px; }
   .controls button { padding:4px 9px; }
@@ -50,6 +65,26 @@
   #log div { padding:5px 8px; border-bottom:1px solid var(--line); font-size:14px; }
   #log .t { color:var(--muted); margin-right:6px; font-variant-numeric:tabular-nums; }
   .table-wrap { overflow-x:auto; }
+  #dlg { position:fixed; inset:0; background:rgba(43,38,34,.35); display:flex; align-items:center;
+         justify-content:center; z-index:50; padding:16px; }
+  #dlg[hidden] { display:none; }
+  .dbox { background:#fff; border-radius:12px; padding:16px 18px; max-width:440px; width:100%;
+          box-shadow:0 10px 30px rgba(0,0,0,.2); }
+  .dbox p { margin:0 0 12px; }
+  .dbox input { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:8px; margin-bottom:12px; }
+  .dbtns { display:flex; justify-content:flex-end; gap:8px; }
+  #freeBtn.active { background:#f6c343; border-color:#b7791f; font-weight:600; }
+  #freeBanner { background:#f6c343; color:#3b2a00; padding:8px 16px; font-size:14px; position:sticky; top:62px; z-index:4; }
+  .lim { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:5px; }
+  .lim input { width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; }
+  .measured { color:var(--green); font-weight:600; }
+  .builder { background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:12px; }
+  .bgrid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; }
+  @media (max-width:760px) { .bgrid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .bleg { border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:var(--bg); }
+  .bleg b { display:block; margin-bottom:4px; }
+  .bleg label { display:flex; justify-content:space-between; align-items:center; gap:6px; margin:3px 0; font-size:14px; }
+  .bleg input { width:72px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; }
 </style>
 </head>
 <body>
@@ -63,12 +98,77 @@
   <button onclick="post('/api/boot_test',{motion:false})">Boot test</button>
   <button onclick="ask('Boot test with wiggle: each servo moves 4 degrees and back, one at a time. Robot on its stand?') && post('/api/boot_test',{motion:true})">Boot test + wiggle</button>
   <button class="primary" onclick="ask('Home all legs: one leg at a time, slowly, to the saved home angles. Robot on its stand?') && post('/api/home',{})">Home all</button>
+  <button id="freeBtn" onclick="toggleFree()">Limit test: OFF</button>
   <button onclick="post('/api/stop')">Stop</button>
   <button class="stop" onclick="post('/api/off')">Motors OFF</button>
 </header>
+<div id="freeBanner" hidden>LIMIT-TEST MODE: safe ranges are off. Move in small steps near a limit; if a joint stops
+  short it is blocked, so back it off 2 to 5&deg; right away, then press <b>Mark limit here</b>.</div>
 <main>
   <div id="problems"></div>
   <div class="legs" id="legs"></div>
+
+  <section id="walkSection">
+    <h3>Walk</h3>
+    <p class="hint">Slow, steady crawl: one foot in the air at a time, the body leans away from it first. Press
+      <b>Check</b> (nothing moves) to see if the settings fit the joints, then <b>Get ready</b>, then <b>Walk</b>.
+      Try it with the feet in the air first. <b>Stop</b> or <b>Motors OFF</b> at any time.</p>
+    <div class="controls">
+      <label class="small">stride <input id="wStride" type="number" value="30" min="10" max="60" step="5" style="width:56px"> mm</label>
+      <label class="small">foot lift <input id="wLift" type="number" value="15" min="5" max="30" step="1" style="width:52px"> mm</label>
+      <label class="small">lean <input id="wLean" type="number" value="15" min="0" max="25" step="1" style="width:52px"> mm</label>
+      <label class="small">speed <input id="wSpeed" type="number" value="0.5" min="0.25" max="3" step="0.25" style="width:56px"> x</label>
+      <label class="small">cycles <input id="wCycles" type="number" value="2" min="1" max="20" style="width:48px"></label>
+    </div>
+    <div class="controls" style="margin-top:6px">
+      <button onclick="post('/api/walk/check', walkParams())">Check</button>
+      <button onclick="ask('Move into the walking start position (one leg at a time, slowly)?') && post('/api/walk/ready', walkParams())">Get ready</button>
+      <button class="primary" onclick="startWalk()">Walk</button>
+      <button onclick="post('/api/stop')">Stop</button>
+      <span id="walkMsg" class="small"></span>
+    </div>
+  </section>
+
+  <section id="poseSection">
+    <h3>Poses</h3>
+    <p class="hint">A pose stores every joint in degrees from home. To make one: move the joints (sliders, nudges),
+      type a name, press <b>Save current pose</b>. To fine-tune: press <b>Go</b>, nudge the joints, then
+      <b>Update from robot</b>, or type a number in the table and press <b>Go</b> again.</p>
+    <div class="controls" style="margin-bottom:10px">
+      <input id="poseName" placeholder="pose name, e.g. crouch" maxlength="30" style="padding:6px 8px;border:1px solid var(--line);border-radius:8px">
+      <button class="primary" onclick="post('/api/pose/save',{name:$('#poseName').value}); $('#poseName').value=''">Save current pose</button>
+      <span class="spacer"></span>
+      <label class="small">speed <input id="poseSpeed" type="number" min="5" max="120" step="5" value="30" style="width:60px"> °/s</label>
+      <label class="small"><input id="byLeg" type="checkbox" checked> one leg at a time</label>
+    </div>
+    <div class="builder">
+      <h4 style="margin:4px 0 6px">Build a position by typing degrees for each leg</h4>
+      <p class="hint" style="margin:0 0 8px">Degrees from home: 0 = straight. Nothing moves when you save. Hips can go about
+        &plusmn;40&deg;, knees &plusmn;60&deg;; bigger numbers are limited. Blank = leave that joint where it is.</p>
+      <div class="bgrid" id="builder"></div>
+      <div class="controls" style="margin-top:8px">
+        <input id="bName" placeholder="name this position, e.g. crouch" maxlength="30"
+          style="padding:6px 8px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+        <label class="small"><input id="bReplace" type="checkbox"> replace if it exists</label>
+        <button class="primary" onclick="saveBuilt(false)">Save position</button>
+        <button onclick="saveBuilt(true)">Save and Go</button>
+        <button onclick="fillBuilder('zero')">All 0</button>
+        <button onclick="fillBuilder('robot')">Copy robot now</button>
+        <select id="bLoad" onchange="this.value && fillBuilder('pose', this.value); this.value=''">
+          <option value="">Load a saved pose...</option></select>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="poses"></table></div>
+    <div class="controls" style="margin-top:10px">
+      <b>Sequence</b>
+      <input id="seqNames" placeholder="stand, crouch, stand" style="flex:1;min-width:180px;padding:6px 8px;border:1px solid var(--line);border-radius:8px">
+      <label class="small">hold <input id="seqDwell" type="number" min="0" max="30" step="0.5" value="1" style="width:55px"> s</label>
+      <label class="small">repeat <input id="seqLoops" type="number" min="1" max="50" value="1" style="width:50px"></label>
+      <button class="primary" onclick="playSeq()">Play</button>
+      <button onclick="post('/api/stop')">Stop</button>
+      <span id="seqStatus" class="small"></span>
+    </div>
+  </section>
 
   <section>
     <h3 id="testTitle">Test results</h3>
@@ -87,11 +187,43 @@
     <div id="log" style="background:#fff;border:1px solid var(--line);border-radius:10px;max-height:320px;overflow:auto"></div>
   </section>
 </main>
+<div id="dlg" hidden><div class="dbox">
+  <p id="dMsg"></p>
+  <input id="dInput" hidden maxlength="30" onkeydown="if(event.key==='Enter')$('#dYes').click()">
+  <div class="dbtns"><button id="dNo">Cancel</button><button id="dYes" class="primary">Yes</button></div>
+</div></div>
 <script>
 const $ = s => document.querySelector(s);
 let S = null, dragging = null, built = false;
 
-function ask(msg) { return confirm(msg); }
+// In-page dialog. Browser pop-ups (confirm/alert/prompt) are blocked silently in some browsers and app
+// panes, which made buttons like Home all look dead. ask() shows the box and returns false; pressing Yes
+// re-runs the same click, and that time ask() returns true.
+let okFor = null, retry = null;
+function ask(msg) {
+  if (okFor === msg) { okFor = null; return true; }
+  const ev = window.event, el = ev && ev.currentTarget;
+  retry = () => {
+    if (el && el.tagName === 'INPUT' && ev.type === 'keydown') el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}));
+    else if (el && el.click) el.click();
+  };
+  showDialog(msg, {yes: 'Yes', no: 'Cancel'}, () => { okFor = msg; retry(); });
+  return false;
+}
+function showDialog(msg, labels, onYes, withInput) {
+  $('#dMsg').textContent = msg;
+  const inp = $('#dInput'); inp.hidden = withInput === undefined; inp.value = withInput || '';
+  $('#dYes').textContent = labels.yes; $('#dNo').textContent = labels.no || ''; $('#dNo').hidden = !labels.no;
+  $('#dlg').hidden = false;
+  (withInput !== undefined ? inp : $('#dYes')).focus();
+  $('#dYes').onclick = () => { $('#dlg').hidden = true; onYes && onYes(inp.value); };
+  $('#dNo').onclick = () => { $('#dlg').hidden = true; };
+}
+window.alert = msg => showDialog(String(msg), {yes: 'OK'});
+function renamePose(n) {
+  showDialog('New name for this pose:', {yes: 'Rename', no: 'Cancel'},
+             v => v && v.trim() && post('/api/pose/rename', {name: n, new: v.trim()}), n);
+}
 async function post(url, body) {
   try {
     await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
@@ -109,29 +241,158 @@ function build() {
   for (const leg of S.legs) {
     const div = document.createElement('div'); div.className = 'leg';
     let h = `<h2><span>${S.leg_names[leg]} <span class="small">(${leg})</span></span>
-      <button onclick="ask('Home the ${S.leg_names[leg]} leg?') && post('/api/home',{legs:['${leg}']})">Home leg</button></h2>`;
+      <button onclick="ask('Home the ${S.leg_names[leg]} leg?') && post('/api/home',{legs:['${leg}']})">Home leg</button></h2>
+      <div class="motors">`;
     for (const part of ['hip','knee']) {
       const j = `${leg}_${part}`;
-      h += `<div class="joint" id="j_${j}">
-        <div class="jhead"><span class="jname">${part} <span class="small" id="id_${j}"></span></span>
-          <span class="big" id="ang_${j}">-</span>
-          <span class="small" id="fh_${j}"></span>
-          <span class="small" id="mot_${j}"></span>
-          <span class="small" id="vt_${j}"></span></div>
-        <div class="controls">
-          <button onclick="nudge('${j}',-5)">-5</button><button onclick="nudge('${j}',-1)">-1</button>
-          <input type="range" id="sl_${j}" step="0.5"
-            onpointerdown="dragging='${j}'" onchange="moveTo('${j}',this.value)" onpointerup="dragging=null">
-          <button onclick="nudge('${j}',1)">+1</button><button onclick="nudge('${j}',5)">+5</button>
-          <button onclick="post('/api/blink',{joint:'${j}'})" title="Flash this servo's LED">find</button>
-        </div></div>`;
+      h += `<div class="motor ${part}" id="j_${j}">
+        <div class="mtitle"><span class="dot" id="dot_${j}"></span>${part} <span id="id_${j}" style="text-transform:none;letter-spacing:0"></span></div>
+        <div class="big" id="ang_${j}">--</div>
+        <div class="sub" id="fh_${j}"></div>
+        <input type="range" id="sl_${j}" step="1" aria-label="${j} target, degrees from home"
+          onpointerdown="dragging='${j}'" oninput="$('#tg_${j}').textContent='target '+sgn(this.value)+'°'"
+          onchange="moveTo('${j}',this.value)">
+        <div class="rangelbl"><span id="lo_${j}"></span><span class="tgt" id="tg_${j}">target --</span><span id="hi_${j}"></span></div>
+        <div class="jog">
+          <span><button onclick="nudge('${j}',-10)">-10</button><button onclick="nudge('${j}',-5)">-5</button><button onclick="nudge('${j}',-1)">-1</button></span>
+          <span><button onclick="nudge('${j}',1)">+1</button><button onclick="nudge('${j}',5)">+5</button><button onclick="nudge('${j}',10)">+10</button></span>
+        </div>
+        <div class="chips"><span class="chip" id="mot_${j}">motor --</span><span class="chip" id="v_${j}">-- V</span>
+          <span class="chip" id="t_${j}">-- C</span>
+          <button class="chip" style="cursor:pointer" onclick="post('/api/blink',{joint:'${j}'})" title="Flash this servo's LED">find</button></div>
+        <details><summary>type a degree / limits</summary>
+          <div class="lim">
+            <input type="number" id="to_${j}" step="1" placeholder="deg" onkeydown="if(event.key==='Enter')goDeg('${j}')">
+            <span class="small">° from home</span><button onclick="goDeg('${j}')">Go</button>
+          </div>
+          <div class="lim"><span class="small" id="lim_${j}"></span></div>
+          <div class="lim">
+            <button onclick="post('/api/limit/mark',{joint:'${j}'})" title="Save where this joint is now as its limit on this side of home">Mark limit here</button>
+            <button onclick="ask('Clear the measured limits of this joint?') && post('/api/limit/clear',{joint:'${j}'})">clear limits</button>
+          </div>
+          <div class="lim">
+            <button onclick="ask('Save where this motor is now as its home (0 deg)? Do this when its leg part is straight.') && post('/api/save_home',{joints:['${j}']})">Set this as home</button>
+          </div>
+        </details>
+      </div>`;
     }
-    div.innerHTML = h; legs.appendChild(div);
+    div.innerHTML = h + '</div>'; legs.appendChild(div);
   }
   built = true;
 }
 function nudge(j, d) { post('/api/nudge', {joint:j, delta:d}); }
-function moveTo(j, v) { dragging = null; post('/api/move', {joint:j, angle:parseFloat(v)}); }
+function goDeg(j) {
+  const el = $(`#to_${j}`), v = parseFloat(el.value);
+  if (isNaN(v)) return alert('Type a number of degrees from home first (0 = straight).');
+  const st = S.joints[j], now = st.from_home ?? 0;
+  if (Math.abs(v - now) > 30 && !ask(`That is a ${Math.abs(v - now).toFixed(0)} degree move for the ${st.name}. Go?`)) return;
+  post('/api/goto', {joint:j, deg:v});
+}
+function walkParams() {
+  return {stride: +$('#wStride').value, lift: +$('#wLift').value, lean: +$('#wLean').value,
+          speed: +$('#wSpeed').value, cycles: +$('#wCycles').value};
+}
+function startWalk() {
+  const p = walkParams();
+  if (ask(`Walk ${p.cycles} cycle(s): stride ${p.stride} mm, lift ${p.lift} mm, lean ${p.lean} mm, speed x${p.speed}? ` +
+          'It first moves into the start position, one leg at a time.')) post('/api/walk', p);
+}
+function toggleFree() {
+  if (S.free) return post('/api/free', {on:false});
+  if (ask('Turn on limit-test mode? Safe ranges are switched off, so a joint can be driven into the body or ' +
+          'into another leg. Use small steps near a limit and keep a hand on Motors OFF.')) post('/api/free', {on:true});
+}
+function moveTo(j, v) {               // slider is in degrees from home; the server wants servo degrees
+  dragging = null; post('/api/move', {joint:j, angle:S.joints[j].home + parseFloat(v)});
+}
+const JOINTS = ['FL_hip','FL_knee','FR_hip','FR_knee','RL_hip','RL_knee','RR_hip','RR_knee'];
+const moveOpts = () => ({speed: parseFloat($('#poseSpeed').value) || 30, by_leg: $('#byLeg').checked});
+let posesKey = '';
+
+function goPose(n) {
+  const o = moveOpts();
+  if (ask(`Go to pose '${n}' at ${o.speed} deg/s${o.by_leg ? ', one leg at a time' : ', all legs at once'}?`))
+    post('/api/pose/go', {name:n, ...o});
+}
+function addToSeq(n) {
+  const cur = $('#seqNames').value.trim();
+  $('#seqNames').value = cur ? `${cur}, ${n}` : n;
+}
+function playSeq() {
+  const names = $('#seqNames').value.split(',').map(x => x.trim()).filter(Boolean);
+  const missing = names.filter(n => !(n in S.poses));
+  if (!names.length) return alert('Type pose names separated by commas, or press "+ seq" on a pose.');
+  if (missing.length) return alert('No saved pose called: ' + missing.join(', '));
+  const o = moveOpts(), loops = parseInt($('#seqLoops').value) || 1, dwell = parseFloat($('#seqDwell').value) || 0;
+  if (ask(`Play ${names.join(' -> ')} ${loops} time(s), holding ${dwell} s at each, at ${o.speed} deg/s?`))
+    post('/api/sequence', {names, loops, dwell, ...o});
+}
+let builderBuilt = false, loadKey = '';
+function buildBuilder() {
+  $('#builder').innerHTML = S.legs.map(leg => `<div class="bleg"><b>${S.leg_names[leg]}</b>` +
+    ['hip','knee'].map(part => {
+      const j = `${leg}_${part}`, st = S.joints[j];
+      if (st.holdable === false) return `<label>${part} <span class="locked" style="font-size:12px">locked</span></label>`;
+      const lo = (st.min - st.home).toFixed(0), hi = (st.max - st.home).toFixed(0);
+      return `<label title="${lo} to ${hi} deg from home">${part} <span><input type="number" id="b_${j}" step="1"
+        min="${lo}" max="${hi}" value="0"> °</span></label>`;
+    }).join('') + '</div>').join('');
+  builderBuilt = true;
+}
+function fillBuilder(kind, name) {
+  for (const j of JOINTS) {
+    const el = $(`#b_${j}`); if (!el) continue;
+    const st = S.joints[j];
+    if (kind === 'zero') el.value = 0;
+    else if (kind === 'robot') el.value = st.from_home === undefined ? '' : Math.round(st.from_home * 10) / 10;
+    else if (kind === 'pose') { const v = S.poses[name]?.[j]; el.value = v === undefined ? '' : v; }
+  }
+  if (kind === 'pose') { $('#bName').value = name; $('#bReplace').checked = true; }
+}
+function saveBuilt(go) {
+  const name = $('#bName').value.trim();
+  if (!name) return alert('Type a name for this position first.');
+  const values = {};
+  for (const j of JOINTS) { const el = $(`#b_${j}`); if (el && el.value !== '') values[j] = parseFloat(el.value); }
+  if (!Object.keys(values).length) return alert('Type at least one number.');
+  const o = moveOpts();
+  if (go && !ask(`Save '${name}' and move the robot there at ${o.speed} deg/s${o.by_leg ? ', one leg at a time' : ''}?`)) return;
+  post('/api/pose/create', {name, values, replace: $('#bReplace').checked, go, ...o});
+}
+function renderBuilderLoad() {
+  const key = Object.keys(S.poses).join('|');
+  if (key === loadKey) return; loadKey = key;
+  $('#bLoad').innerHTML = '<option value="">Load a saved pose...</option>' +
+    Object.keys(S.poses).map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+}
+function renderPoses() {
+  if (!builderBuilt && S.joints.FL_hip.home !== undefined) buildBuilder();
+  renderBuilderLoad();
+  const key = JSON.stringify([S.poses, S.connected, !!S.busy]);
+  const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#poses');
+  if (key === posesKey || editing) return;
+  posesKey = key;
+  const names = Object.keys(S.poses);
+  const head = '<tr><th>Pose</th>' + JOINTS.map(j => `<th>${j.replace('_',' ')}</th>`).join('') + '<th></th></tr>';
+  if (!names.length) { $('#poses').innerHTML = head + `<tr><td colspan="10" class="hint">No poses yet.</td></tr>`; return; }
+  const dis = (S.busy || !S.connected) ? 'disabled' : '';
+  $('#poses').innerHTML = head + names.map(n => {
+    const p = S.poses[n], en = encodeURIComponent(n).replace(/'/g, '%27');
+    const cells = JOINTS.map(j => {
+      const st = S.joints[j];
+      if (st.holdable === false || p[j] === undefined) return '<td class="hint">locked</td>';
+      return `<td><input type="number" step="0.5" value="${p[j]}" min="${(st.min - st.home).toFixed(1)}" max="${(st.max - st.home).toFixed(1)}"
+        style="width:64px" onchange="post('/api/pose/set',{name:decodeURIComponent('${en}'),joint:'${j}',value:parseFloat(this.value)})"></td>`;
+    }).join('');
+    return `<tr><td><b>${esc(n)}</b></td>${cells}<td style="white-space:nowrap">
+      <button ${dis} onclick="goPose(decodeURIComponent('${en}'))">Go</button>
+      <button ${dis} onclick="ask('Replace pose \\u201c' + decodeURIComponent('${en}') + '\\u201d with the robot angles right now?') && post('/api/pose/save',{name:decodeURIComponent('${en}')})">Update from robot</button>
+      <button onclick="addToSeq(decodeURIComponent('${en}'))">+ seq</button>
+      <button onclick="renamePose(decodeURIComponent('${en}'))">rename</button>
+      <button onclick="ask('Delete pose \\u201c' + decodeURIComponent('${en}') + '\\u201d?') && post('/api/pose/delete',{name:decodeURIComponent('${en}')})">delete</button></td></tr>`;
+  }).join('');
+}
+const sgn = x => { const v = Math.round(Number(x) * 10) / 10; return (v > 0 ? '+' : '') + v.toFixed(1); };
 
 function render() {
   if (!built) build();
@@ -139,36 +400,68 @@ function render() {
   $('#conn').textContent = S.connected ? `connected ${S.port}` : 'not connected';
   const v = S.vmin;
   $('#volts').className = 'pill ' + (v === null ? '' : (v < 6 || v > 8.4 ? 'bad' : 'ok'));
-  $('#volts').textContent = v === null ? 'supply ?' : `supply ${v.toFixed(2)} V`;
+  const vs = Object.values(S.joints).filter(k => k.ok && k.volts).map(k => [k.volts, k.id]).sort((a, b) => a[0] - b[0]);
+  if (!vs.length) $('#volts').textContent = 'supply ?';
+  else {
+    const mid = vs[Math.floor(vs.length / 2)][0], lo = vs[0];
+    $('#volts').textContent = `supply ${mid.toFixed(2)} V` + (mid - lo[0] >= 0.05 ? ` · lowest ${lo[0].toFixed(2)} (ID ${lo[1]})` : '');
+    $('#volts').title = 'Each servo measures its own supply; the typical value is shown, plus the lowest if it differs.';
+  }
+  $('#freeBtn').textContent = S.free ? 'Limit test: ON' : 'Limit test: OFF';
+  $('#freeBtn').classList.toggle('active', !!S.free);
+  $('#freeBanner').hidden = !S.free;
   $('#busy').hidden = !S.busy; $('#busy').textContent = S.busy ? `running: ${S.busy}` : '';
   document.querySelectorAll('header button, .leg button, section button').forEach(b => {
-    if (!['Stop','Motors OFF','Reconnect'].includes(b.textContent)) b.disabled = !!S.busy || !S.connected;
+    if (!['Stop','Motors OFF','Reconnect'].includes(b.textContent) && b.id !== 'freeBtn') b.disabled = !!S.busy || !S.connected;
   });
 
   $('#problems').innerHTML = S.problems.map(([lvl,msg,hint]) =>
     `<div class="${lvl}"><b>${esc(msg)}</b> <span class="hint">${esc(hint)}</span></div>`).join('');
 
   for (const [j, st] of Object.entries(S.joints)) {
+    const h = st.home;
+    $(`#dot_${j}`).className = 'dot ' + (st.ok ? 'ok' : 'bad');
     $(`#id_${j}`).textContent = st.id !== undefined ? `ID ${st.id}` : '';
-    $(`#ang_${j}`).textContent = st.ok ? `${f1(st.angle)}°` : 'no answer';
-    $(`#fh_${j}`).textContent = st.from_home !== undefined ? `${st.from_home >= 0 ? '+' : ''}${f1(st.from_home)}° from home (${f1(st.home)})` : '';
+    $(`#ang_${j}`).textContent = st.ok && st.from_home !== undefined ? `${sgn(st.from_home)}°` : '--';
+    $(`#fh_${j}`).textContent = !st.ok ? 'not answering' : `servo ${f1(st.angle)}° · home ${f1(h)}°`;
     const mot = $(`#mot_${j}`);
-    if (st.holdable === false) { mot.className = 'locked'; mot.textContent = 'LOCKED: home out of range'; }
-    else { mot.className = st.motor ? 'on' : 'off'; mot.textContent = st.motor ? 'motor on' : 'motor off'; }
-    $(`#vt_${j}`).textContent = st.ok ? `${f1(st.volts)} V · ${st.temp} C` : '';
+    if (st.holdable === false) { mot.className = 'chip bad'; mot.textContent = 'LOCKED'; mot.title = 'home is outside the servo 0 to 240 range'; }
+    else { mot.className = 'chip' + (st.motor ? ' on' : ''); mot.textContent = st.motor ? 'motor on' : 'motor off (limp)'; }
+    const v = $(`#v_${j}`); v.textContent = st.ok ? `${f1(st.volts)} V` : '-- V';
+    v.className = 'chip' + (!st.ok ? '' : (st.volts < 4.5 || st.volts > 8.4) ? ' bad' : st.volts < 6 ? ' warnc' : '');
+    const t = $(`#t_${j}`); t.textContent = st.ok ? `${st.temp} C` : '-- C';
+    t.className = 'chip' + (st.temp >= 60 ? ' bad' : st.temp >= 55 ? ' warnc' : '');
     const sl = $(`#sl_${j}`);
-    if (st.min !== undefined) { sl.min = st.min; sl.max = st.max; }
-    sl.disabled = !st.holdable || !!S.busy || !S.connected;
-    if (dragging !== j) sl.value = st.target ?? st.angle ?? st.home ?? 120;
+    if (st.min !== undefined) {
+      sl.min = Math.ceil(st.min - h); sl.max = Math.floor(st.max - h);
+      $(`#lo_${j}`).textContent = `${sgn(st.min - h)}°`; $(`#hi_${j}`).textContent = `${sgn(st.max - h)}°`;
+    }
+    sl.disabled = (!st.holdable && !S.free) || !!S.busy || !S.connected;
+    if (dragging !== j && h !== undefined) {
+      const tv = (st.target ?? st.angle ?? h) - h;
+      sl.value = tv; $(`#tg_${j}`).textContent = st.target != null ? `target ${sgn(tv)}°` : 'target --';
+    }
+    if (st.safe_min !== undefined) {
+      const m = x => x === null || x === undefined ? null : x - h;
+      const lo = m(st.limit_min), hi = m(st.limit_max);
+      const part = (x, d) => x === null ? `<span>${sgn(d)} (default)</span>` : `<span class="measured">${sgn(x)} measured</span>`;
+      $(`#lim_${j}`).innerHTML = `limits ${part(lo, st.safe_min - h)} / ${part(hi, st.safe_max - h)}`;
+    }
   }
+
+  renderPoses();
+  const wm = S.events.find(e => /^(Walk|Ready to walk|Walking|Getting ready|This walk)/.test(e.msg));
+  $('#walkMsg').textContent = wm ? `${wm.t}  ${wm.msg}` : '';
+  const q = S.seq;
+  $('#seqStatus').textContent = q && q.running ? `playing '${q.pose}' (${q.step}/${q.steps}, round ${q.loop}/${q.loops})` : '';
 
   const T = S.last_test;
   if (T) {
     $('#testTitle').textContent = `Test results: ${T.kind} at ${T.time}`;
-    $('#tests').innerHTML = '<tr><th>Joint</th><th>ID</th><th>Angle</th><th>Home</th><th>Result</th><th>Notes</th></tr>' +
-      T.rows.map(r => `<tr><td>${esc(r.joint.replace('_',' '))}</td><td>${r.id}</td>
-        <td>${f1(r.end ?? r.angle)}</td><td>${f1(r.home)}</td>
-        <td class="${r.result}">${r.result}</td><td class="hint">${esc((r.notes||[]).join('; '))}</td></tr>`).join('');
+    $('#tests').innerHTML = '<tr><th>Joint</th><th>ID</th><th>From home</th><th>Servo angle</th><th>Result</th><th>Notes</th></tr>' +
+      T.rows.map(r => { const a = r.end ?? r.angle; return `<tr><td>${esc(r.joint.replace('_',' '))}</td><td>${r.id}</td>
+        <td>${a === undefined ? '-' : sgn(a - r.home) + '°'}</td><td>${f1(a)}</td>
+        <td class="${r.result}">${r.result}</td><td class="hint">${esc((r.notes||[]).join('; '))}</td></tr>`; }).join('');
   }
   $('#log').innerHTML = S.events.map(e =>
     `<div class="${e.level}"><span class="t">${e.t}</span>${esc(e.msg)} <span class="hint">${esc(e.hint||'')}</span></div>`).join('')

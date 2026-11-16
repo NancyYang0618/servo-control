@@ -17,6 +17,12 @@ from pathlib import Path
 
 import serial
 
+try:                                    # a vanished USB port raises termios.error on Linux, not OSError
+    import termios
+    PORT_ERRORS = (serial.SerialException, OSError, termios.error)
+except ImportError:
+    PORT_ERRORS = (serial.SerialException, OSError)
+
 HERE = Path(__file__).resolve().parent
 CONFIG_FILE = HERE / "robot_config.json"
 LOG_DIR = HERE / "logs"
@@ -29,6 +35,17 @@ JOINT_ORDER = [f"{leg}_{j}" for leg in LEGS for j in ("hip", "knee")]
 MOVE_TIME_WRITE, ID_WRITE, TEMP_READ, VIN_READ, POS_READ = 1, 13, 26, 27, 28
 LOAD_WRITE, LOAD_READ, LED_WRITE = 31, 32, 33
 UNITS_PER_DEG = 1000 / 240          # servo counts 0..1000 = 0..240 degrees
+
+
+def pi_power_low():
+    """True while the Raspberry Pi itself reports under-voltage right now (its own 5 V supply sagging).
+    None when it can't tell (not a Pi). Reads the firmware's flags; takes about 10 ms."""
+    try:
+        import subprocess
+        out = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=1).stdout
+        return bool(int(out.strip().split("=")[1], 16) & 0x1)
+    except Exception:
+        return None
 
 
 class BusError(Exception):
@@ -44,22 +61,59 @@ def pretty(joint):
     return f"{LEG_NAMES[leg]} {part}"
 
 
+FREE_RANGE = (1.0, 239.0)       # limit-test mode: only the servo's own 0..240 range applies
+
+
 def load_config():
+    """Safe range per joint: a MEASURED limit (limit_min / limit_max, found in limit-test mode) minus
+    limit_margin_deg, or by default home +/- swing_deg."""
     cfg = json.loads(CONFIG_FILE.read_text())
     lo_all, hi_all = cfg["servo_limits_deg"]
+    margin = cfg.get("limit_margin_deg", 3.0)
     for name, s in cfg["servos"].items():
         swing = cfg["swing_deg"]["hip" if name.endswith("hip") else "knee"]
-        s["holdable"] = 0.0 <= s["home"] <= 240.0
-        s["min"] = max(lo_all, s["home"] - swing)
-        s["max"] = min(hi_all, s["home"] + swing)
+        s["forced"] = bool(s.get("force_unlock")) and not 0.0 <= s["home"] <= 240.0
+        s["holdable"] = 0.0 <= s["home"] <= 240.0 or s["forced"]
+        s["min_measured"] = "limit_min" in s
+        s["max_measured"] = "limit_max" in s
+        s["min"] = (max(FREE_RANGE[0], s["limit_min"] + margin) if s["min_measured"]
+                    else max(lo_all, s["home"] - swing))
+        s["max"] = (min(FREE_RANGE[1], s["limit_max"] - margin) if s["max_measured"]
+                    else min(hi_all, s["home"] + swing))
+        if s["min"] >= s["max"]:     # a bad measured limit must never leave an empty range: ignore it
+            s["min_measured"] = s["max_measured"] = False
+            s["min"] = max(lo_all, s["home"] - swing)
+            s["max"] = min(hi_all, s["home"] + swing)
+        if s["forced"]:              # home unreachable: give the whole reachable range until limits are marked
+            if not s["min_measured"]:
+                s["min"] = lo_all
+            if not s["max_measured"]:
+                s["max"] = hi_all
     return cfg
+
+
+def save_limit(joint, side, angle):
+    """side 'min' or 'max'; angle = servo degrees where the joint stops. None clears it."""
+    cfg = json.loads(CONFIG_FILE.read_text())
+    key = f"limit_{side}"
+    if angle is None:
+        cfg["servos"][joint].pop(key, None)
+    else:
+        cfg["servos"][joint][key] = round(float(angle), 1)
+    CONFIG_FILE.write_text(json.dumps(cfg, indent=2) + "\n")
 
 
 def save_homes(homes):
     """homes: {joint: angle}. Rewrites robot_config.json keeping everything else."""
     cfg = json.loads(CONFIG_FILE.read_text())
     for j, a in homes.items():
-        cfg["servos"][j]["home"] = round(float(a), 1)
+        s = cfg["servos"][j]
+        if abs(float(a) - s["home"]) > 5.0:        # joint was re-mounted: its old measured limits no longer apply
+            s.pop("limit_min", None)
+            s.pop("limit_max", None)
+        s["home"] = round(float(a), 1)
+        if 0.0 <= s["home"] <= 240.0:              # reachable again: no force-unlock needed
+            s.pop("force_unlock", None)
     cfg["note"] = cfg["note"].split(" (saved")[0] + f" (saved {time.strftime('%Y-%m-%d %H:%M')})"
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2) + "\n")
 
@@ -84,7 +138,7 @@ class Bus:
                            "Plug the BusLinker into a Pi USB port with a data cable. It shows up as /dev/ttyUSB0.")
         try:
             self.ser = serial.Serial(self.port, 115200, timeout=timeout)
-        except (serial.SerialException, OSError) as e:
+        except PORT_ERRORS as e:
             raise BusError(f"Cannot open {self.port}: {e}",
                            "Another program may be using it (the panel service?). Unplug the BusLinker USB, "
                            "wait 3 s, plug it back in.")
@@ -104,7 +158,7 @@ class Bus:
         body = [sid, len(params) + 3, cmd, *params]
         try:
             self.ser.write(bytes([0x55, 0x55, *body, self._checksum(body)]))
-        except (serial.SerialException, OSError) as e:
+        except PORT_ERRORS as e:
             raise BusError(f"Lost the USB link to the BusLinker ({e}).",
                            "Unplug the BusLinker USB, wait 3 s, plug it back in, then Reconnect.")
 
@@ -115,13 +169,13 @@ class Bus:
             for _ in range(tries):
                 try:
                     self.ser.reset_input_buffer()
-                except (serial.SerialException, OSError) as e:
+                except PORT_ERRORS as e:
                     raise BusError(f"Lost the USB link to the BusLinker ({e}).",
                                    "Unplug the BusLinker USB, wait 3 s, plug it back in, then Reconnect.")
                 self._send(sid, cmd)
                 try:
                     raw = self.ser.read(nbytes + 6)
-                except (serial.SerialException, OSError) as e:
+                except PORT_ERRORS as e:
                     raise BusError(f"Lost the USB link to the BusLinker ({e}).",
                                    "Unplug the BusLinker USB, wait 3 s, plug it back in, then Reconnect.")
                 if (len(raw) == nbytes + 6 and raw[:2] == b"\x55\x55" and raw[2] == sid and raw[4] == cmd
@@ -181,6 +235,7 @@ class Robot:
         self.bus = bus or Bus()
         self.log = log
         self.stop = threading.Event()
+        self.free = False           # limit-test mode: ignore the safe range, keep only 0..240
 
     @property
     def servos(self):
@@ -192,9 +247,13 @@ class Robot:
     def reload(self):
         self.cfg = load_config()
 
-    def clamp(self, joint, angle):
+    def limits(self, joint):
         s = self.servos[joint]
-        return max(s["min"], min(s["max"], angle))
+        return FREE_RANGE if self.free else (s["min"], s["max"])
+
+    def clamp(self, joint, angle):
+        lo, hi = self.limits(joint)
+        return max(lo, min(hi, angle))
 
     def all_off(self):
         """Emergency: every motor limp. Sent twice to every ID, errors ignored."""
@@ -240,7 +299,10 @@ class Robot:
             if t >= c["temp_c"]["warn"]:
                 row["result"] = "FAIL"
                 row["notes"].append(f"{t} C, too hot")
-            if not 0.0 <= a <= 240.0:
+            if s["forced"]:
+                row["notes"].append(f"force-unlocked: straight (servo {s['home']:.1f}) is out of the servo's reach; "
+                                    "it works from about 46 deg bent onward")
+            elif not 0.0 <= a <= 240.0:
                 row["result"] = "FAIL"
                 row["notes"].append(f"reading {a:.1f} deg is outside 0 to 240: the servo cannot hold this joint")
             if not s["holdable"]:
@@ -271,6 +333,9 @@ class Robot:
         sid, s = self.sid(joint), self.servos[joint]
         try:
             start = self.bus.angle(sid)
+            if not 0.0 <= start <= 240.0:
+                row["notes"].append(f"wiggle skipped: reading {start:.1f} deg is past the servo's 240 deg end")
+                return "PASS"
             was_on = self.bus.motor_on(sid)
             self.bus.move(sid, start, 0)                     # hold exactly where it is: no jump
             time.sleep(0.15)
@@ -294,21 +359,35 @@ class Robot:
 
     # ---------------------------------------------------------------- homing
     def home(self, joints=None, speed=None, progress=None):
-        """Bring joints to home, one LEG at a time (hip and knee together), slowly.
-        Each servo first holds where it is, so switching it on never makes it jump.
-        Returns (all_ok, rows)."""
-        speed = speed or self.cfg["home_speed_deg_s"]
+        """Bring joints to home, one LEG at a time (hip and knee together), slowly."""
         joints = joints or JOINT_ORDER
+        ok, rows = self.go_to({j: self.servos[j]["home"] for j in joints}, speed=speed, by_leg=True,
+                              progress=progress, label="Homing")
+        self.write_log("homing", rows)
+        return ok, rows
+
+    def pose_targets(self, pose):
+        """pose = {joint: degrees from home} -> {joint: servo angle}, only joints that can be held."""
+        return {j: self.servos[j]["home"] + float(d) for j, d in pose.items()
+                if j in self.servos and self.servos[j]["holdable"]}
+
+    def go_to(self, targets, speed=None, by_leg=True, progress=None, label="Moving"):
+        """Glide joints to servo angles {joint: angle} at `speed` deg/s, all arriving together.
+        by_leg=True moves one leg at a time (safest); False moves every leg at once.
+        Each servo first holds where it is, so switching it on never makes it jump.
+        Targets are limited to each joint's safe range. Returns (all_ok, rows)."""
+        speed = float(speed or self.cfg["home_speed_deg_s"])
         rows, ok = [], True
         self.stop.clear()
-        for leg in LEGS:
-            todo = [j for j in joints if j.startswith(leg)]
-            if not todo:
-                continue
+        groups = [[j for j in JOINT_ORDER if j.startswith(leg) and j in targets] for leg in LEGS] if by_leg \
+            else [[j for j in JOINT_ORDER if j in targets]]
+        for group in groups:
             plan = []
-            for j in todo:
+            for j in group:
                 s, sid = self.servos[j], self.sid(j)
-                row = dict(joint=j, id=sid, home=s["home"], result="PASS", notes=[])
+                want = float(targets[j])
+                goal = self.clamp(j, want)
+                row = dict(joint=j, id=sid, home=s["home"], target=goal, result="PASS", notes=[])
                 rows.append(row)
                 if not s["holdable"]:
                     row.update(result="SKIPPED")
@@ -316,6 +395,9 @@ class Robot:
                                         "motor left OFF. Re-mount this joint, then save home again.")
                     ok = False
                     continue
+                if abs(goal - want) > 0.05:
+                    row["notes"].append(f"target limited to the safe range ({goal - s['home']:+.1f} deg "
+                                        f"from home instead of {want - s['home']:+.1f})")
                 try:
                     a = self.bus.angle(sid)
                     v = self.bus.volts(sid)
@@ -324,7 +406,7 @@ class Robot:
                     ok = False
                     continue
                 row["start"] = a
-                if not 0.0 <= a <= 240.0:
+                if not 0.0 <= a <= 240.0 and not s["forced"]:
                     row.update(result="SKIPPED")
                     row["notes"].append(f"reading {a:.1f} deg is outside 0 to 240, so switching it on would "
                                         "make it jump. Motor left OFF; move the joint by hand into range.")
@@ -334,25 +416,25 @@ class Robot:
                     row.update(result="FAIL", notes=[f"supply {v:.2f} V: not moving"])
                     ok = False
                     continue
-                plan.append((j, sid, a, s["home"], row))
+                plan.append((j, sid, a, goal, row))
             if not plan:
                 continue
             if progress:
-                progress(f"Homing {LEG_NAMES[leg]} leg")
-            # 1) hold where it is (no jump)  2) glide to home at `speed`
-            t_ms = 0
-            for j, sid, a, h, row in plan:
-                self.bus.move(sid, a, 0)
+                legs = sorted({j[:2] for j, *_ in plan}, key=LEGS.index)
+                progress(f"{label}: {', '.join(LEG_NAMES[l] for l in legs)}")
+            for j, sid, a, g, row in plan:            # 1) hold where it is (no jump)
+                if 0.0 <= a <= 240.0:
+                    self.bus.move(sid, a, 0)
+                else:
+                    row["notes"].append("started past the servo's 240 deg end, so it swung into range")
             time.sleep(0.15)
-            for j, sid, a, h, row in plan:
-                t_ms = max(t_ms, abs(h - a) / speed * 1000)
-            t_ms = max(300, t_ms)
-            for j, sid, a, h, row in plan:
-                self.bus.move(sid, h, t_ms)
+            t_ms = max(300, max(abs(g - a) for _, _, a, g, _ in plan) / speed * 1000)
+            for j, sid, a, g, row in plan:            # 2) glide, all arriving together
+                self.bus.move(sid, g, t_ms)
             end = time.time() + t_ms / 1000 + 0.5
             while time.time() < end:
                 if self.stop.is_set():
-                    for j, sid, a, h, row in plan:
+                    for j, sid, a, g, row in plan:
                         try:
                             self.bus.move(sid, self.bus.angle(sid), 0)      # freeze where it is
                         except BusError:
@@ -360,7 +442,7 @@ class Robot:
                         row.update(result="STOPPED")
                     return False, rows
                 time.sleep(0.05)
-            for j, sid, a, h, row in plan:
+            for j, sid, a, g, row in plan:            # 3) check it arrived
                 try:
                     end_a = self.bus.angle(sid)
                 except BusError as e:
@@ -368,15 +450,75 @@ class Robot:
                     ok = False
                     continue
                 row["end"] = end_a
-                err = abs(end_a - h)
+                err = abs(end_a - g)
                 if err > 3.0:
                     row["result"] = "FAIL"
-                    row["notes"].append(f"stopped {err:.1f} deg short of home: something may be blocking it")
+                    row["notes"].append(f"stopped {err:.1f} deg short of its target: something may be blocking it")
                     ok = False
                 else:
-                    row["notes"].append(f"{a:.1f} -> {end_a:.1f} deg (home {h:.1f})")
-        self.write_log("homing", rows)
+                    h = row["home"]
+                    row["notes"].append(f"{a - h:+.1f} -> {end_a - h:+.1f} deg from home (target {g - h:+.1f})")
         return ok, rows
+
+    # ---------------------------------------------------------------- walking
+    def play(self, frames, dt, progress=None, settle_speed=20.0):
+        """Play a list of {joint: servo angle} frames, one every dt seconds.
+        Starts with a slow move (one leg at a time) into the first frame. Every frame it reads one servo
+        back (taking turns), so an unplugged motor or a stalled joint is noticed within about a second.
+        Stop (self.stop) makes every joint hold where it is. Returns a summary dict."""
+        self.stop.clear()
+        ok, rows = self.go_to(frames[0], speed=settle_speed, by_leg=True, progress=progress, label="Getting ready")
+        if self.stop.is_set():
+            return dict(ok=False, why="stopped while getting ready", rows=rows)
+        if not ok:
+            return dict(ok=False, why="could not reach the start position", rows=rows)
+        joints = list(frames[0])
+        ms = int(dt * 1000) + 30                  # a little overlap so motion stays smooth
+        worst = {j: 0.0 for j in joints}
+        misses, vmin, t_next, low_count = 0, 99.0, time.time(), 0
+        check_every = max(1, int(0.5 / dt))      # look at the Pi's own power twice a second
+        for i, fr in enumerate(frames):
+            if self.stop.is_set():
+                self._freeze(joints)
+                return dict(ok=False, why="stopped", frame=i, frames=len(frames), worst=worst, vmin=vmin)
+            if i % check_every == 0 and pi_power_low():
+                low_count += 1
+                if low_count >= 2:               # sagging for a second: stop before the Pi resets
+                    self._freeze(joints)
+                    return dict(ok=False, why="the Pi's own power sagged (the motors drew too much current from "
+                                "the shared battery), so the walk stopped before the Pi could reset", frame=i,
+                                frames=len(frames), worst=worst, vmin=vmin, power=True)
+            elif i % check_every == 0:
+                low_count = 0
+            for j, a in fr.items():
+                self.bus.move(self.sid(j), self.clamp(j, a), ms)
+            j = joints[i % len(joints)]           # heartbeat: read one servo back per frame
+            try:
+                ang = self.bus.angle(self.sid(j))
+                if i > 3:
+                    prev = frames[i - 1][j]
+                    worst[j] = max(worst[j], abs(ang - prev))
+                if i % 10 == 0:
+                    vmin = min(vmin, self.bus.volts(self.sid(j)))
+                misses = 0
+            except BusError:
+                misses += 1
+                if misses >= 3:
+                    self._freeze(joints)
+                    return dict(ok=False, why=f"{pretty(j)} stopped answering during the walk", frame=i,
+                                frames=len(frames), worst=worst, vmin=vmin)
+            if progress and i % 20 == 0:
+                progress(f"Walking: {100 * i // len(frames)}%")
+            t_next += dt
+            time.sleep(max(0.0, t_next - time.time()))
+        return dict(ok=True, frames=len(frames), worst=worst, vmin=vmin)
+
+    def _freeze(self, joints):
+        for j in joints:
+            try:
+                self.bus.move(self.sid(j), self.bus.angle(self.sid(j)), 0)
+            except BusError:
+                pass
 
     # ---------------------------------------------------------------- helpers
     def write_log(self, kind, rows):
@@ -388,10 +530,12 @@ class Robot:
 
 def print_rows(rows, title):
     print(f"\n{title}")
-    print(f"  {'joint':<18}{'ID':>3}  {'angle':>7}  {'home':>7}  {'volts':>6}  {'temp':>5}  result   notes")
+    print(f"  {'joint':<18}{'ID':>3}  {'from home':>9}  {'servo':>7}  {'home':>7}  {'volts':>6}  {'temp':>5}  result   notes")
     for r in rows:
-        ang = r.get("end", r.get("angle"))
-        ang = f"{ang:7.1f}" if isinstance(ang, (int, float)) else "      -"
+        a = r.get("end", r.get("angle"))
+        num = isinstance(a, (int, float))
+        rel = f"{a - r['home']:+8.1f}°" if num else "        -"
+        ang = f"{rel}  {a:7.1f}" if num else f"{rel}        -"
         v = f"{r['volts']:6.2f}" if isinstance(r.get("volts"), float) else "     -"
         t = f"{r['temp']:4d}C" if isinstance(r.get("temp"), int) else "    -"
         print(f"  {pretty(r['joint']):<18}{r['id']:>3}  {ang}  {r['home']:7.1f}  {v}  {t}  "

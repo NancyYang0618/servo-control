@@ -34,14 +34,14 @@ def main():
         sys.exit(f"{e}\n  -> {e.hint}")
     joints = [j for j in JOINT_ORDER if not a.leg or j.startswith(a.leg)]
     try:
-        print(f"  {'joint':<18}{'ID':>3}  {'now':>7}  {'home':>7}  {'move':>7}")
+        print(f"  {'joint':<18}{'ID':>3}  {'from home':>9}  {'servo now':>9}  {'servo home':>10}")
         now = {}
         for j in joints:
             s = robot.servos[j]
             try:
                 now[j] = robot.bus.angle(s["id"])
-                d = f"{s['home'] - now[j]:+7.1f}" if s["holdable"] else "  OFF  "
-                print(f"  {pretty(j):<18}{s['id']:>3}  {now[j]:7.1f}  {s['home']:7.1f}  {d}")
+                rel = f"{now[j] - s['home']:+8.1f}°" if s["holdable"] else "   LOCKED"
+                print(f"  {pretty(j):<18}{s['id']:>3}  {rel}  {now[j]:9.1f}  {s['home']:10.1f}")
             except BusError as e:
                 print(f"  {pretty(j):<18}{s['id']:>3}  not answering ({e.hint})")
 
