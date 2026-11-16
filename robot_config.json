@@ -1,44 +1,44 @@
 {
-  "note": "XIANG full robot, 8 LX-16A servos. 'home' = servo angle with every leg straight (saved 2026-10-05 22:06)",
+  "note": "XIANG full robot, 8 LX-16A servos. 'home' = servo angle with every leg straight (saved 2026-11-16 14:27)",
   "servos": {
     "FL_hip": {
       "id": 1,
-      "home": 212.6,
+      "home": 215.8,
       "sign": -1
     },
     "FL_knee": {
       "id": 2,
-      "home": 110.4,
+      "home": 109.9,
       "sign": 1
     },
     "FR_hip": {
       "id": 3,
-      "home": 120.2,
+      "home": 119.8,
       "sign": 1
     },
     "FR_knee": {
       "id": 4,
-      "home": 116.9,
+      "home": 117.8,
       "sign": -1
     },
     "RL_hip": {
       "id": 5,
-      "home": 115.9,
+      "home": 111.4,
       "sign": -1
     },
     "RL_knee": {
       "id": 6,
-      "home": 134.9,
+      "home": 134.2,
       "sign": 1
     },
     "RR_hip": {
       "id": 7,
-      "home": 159.4,
+      "home": 153.8,
       "sign": 1
     },
     "RR_knee": {
       "id": 8,
-      "home": 114.7,
+      "home": 114.2,
       "sign": -1
     }
   },
