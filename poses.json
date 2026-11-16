@@ -1,0 +1,57 @@
+{
+ "test-bend": {
+  "FL_hip": 0.0,
+  "FR_hip": 0.0,
+  "FR_knee": 10.0,
+  "RL_hip": 0.0,
+  "RL_knee": 10.0,
+  "RR_hip": 0.0,
+  "RR_knee": 10.0
+ },
+ "standing/home": {
+  "FL_hip": 2.9,
+  "FL_knee": 0.0,
+  "FR_hip": 0.8,
+  "FR_knee": 2.9,
+  "RL_hip": -1.2,
+  "RL_knee": -2.9,
+  "RR_hip": -5.1,
+  "RR_knee": -0.2
+ },
+ "dir-check-hips": {
+  "FL_hip": 10.0,
+  "FL_knee": 0.0,
+  "FR_hip": 10.0,
+  "FR_knee": 0.0,
+  "RL_hip": 10.0,
+  "RL_knee": 0.0,
+  "RR_hip": 10.0,
+  "RR_knee": 0.0
+ },
+ "dir-check-zero": {
+  "FL_hip": 0.0,
+  "FR_hip": 0.0,
+  "RL_hip": 0.0,
+  "RR_hip": 0.0
+ },
+ "kneel-a-little": {
+  "FL_hip": -22.9,
+  "FL_knee": -46.1,
+  "FR_hip": 22.9,
+  "FR_knee": 46.1,
+  "RL_hip": -22.9,
+  "RL_knee": -46.1,
+  "RR_hip": 22.9,
+  "RR_knee": 46.1
+ },
+ "kneel-deeper": {
+  "FL_hip": -27.5,
+  "FL_knee": -55.3,
+  "FR_hip": 27.5,
+  "FR_knee": 55.3,
+  "RL_hip": -27.5,
+  "RL_knee": -55.3,
+  "RR_hip": 27.5,
+  "RR_knee": 55.3
+ }
+}
