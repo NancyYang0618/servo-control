@@ -259,7 +259,10 @@ def _rock(t, off, beta, amp_rear, amp_front=None):
     return 0.0
 
 
-DIAGONAL = dict(ELEPHANT, beta=0.75, rock_rear=0.0, rock_front=0.0, period=4.0, foot_shift=10.0)
+DIAGONAL = dict(ELEPHANT, beta=0.75, rock_rear=0.0, rock_front=0.0, period=4.0, lift=25.0, foot_shift=25.0)
+# lift 25 mm (2026-11-17): at 15 mm the swinging pair scraped the floor while the robot tipped onto it, and
+# a foot scraping forward pushes the body BACKWARD (Nancy saw it walk backward). foot_shift 25 mm forward keeps
+# the front-left hip inside its -20 deg limit with the bigger lift.
 # Diagonal pairs (Nancy's idea, 2026-11-17): front-left + rear-right step together, then front-right + rear-left.
 # Same footfall pairs as the Lecture 5 trot, but slow and with all four feet down between the pairs.
 # While a pair is up the robot stands on a diagonal LINE, so balance is dynamic (not checked statically):
