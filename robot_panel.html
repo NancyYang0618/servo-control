@@ -110,19 +110,43 @@
 
   <section id="walkSection">
     <h3>Walk</h3>
-    <p class="hint">Slow, steady crawl: one foot in the air at a time, the body leans away from it first. Press
-      <b>Check</b> (nothing moves) to see if the settings fit the joints, then <b>Get ready</b>, then <b>Walk</b>.
-      Try it with the feet in the air first. <b>Stop</b> or <b>Motors OFF</b> at any time.</p>
     <div class="controls">
+      <label class="small">gait
+        <select id="wGait" onchange="showGaitParams()">
+          <option value="elephant">Elephant walk (smooth, never stops)</option>
+          <option value="crawl">Step-by-step crawl (stops and leans)</option>
+          <option value="trot">Sine: trot (diagonal pairs)</option>
+          <option value="pace">Sine: pace (same-side pairs)</option>
+          <option value="bound">Sine: bound (front pair, rear pair)</option>
+          <option value="pronk">Sine: pronk (all four together)</option>
+          <option value="sine-crawl">Sine: crawl (one leg at a time)</option>
+        </select></label>
+      <label class="small">cycles <input id="wCycles" type="number" value="2" min="1" max="20" style="width:48px"></label>
+      <label class="small">speed <input id="wSpeed" type="number" value="1" min="0.25" max="3" step="0.25" style="width:56px"> x</label>
+    </div>
+    <p class="hint" id="gHint"></p>
+    <div class="controls gp" data-g="elephant crawl">
       <label class="small">stride <input id="wStride" type="number" value="30" min="10" max="60" step="5" style="width:56px"> mm</label>
       <label class="small">foot lift <input id="wLift" type="number" value="15" min="5" max="30" step="1" style="width:52px"> mm</label>
+    </div>
+    <div class="controls gp" data-g="elephant">
+      <label class="small">rock <input id="wRock" type="number" value="25" min="0" max="35" step="1" style="width:52px"> mm</label>
+      <label class="small">foot down <input id="wBeta" type="number" value="0.85" min="0.6" max="0.95" step="0.05" style="width:58px"> of the cycle</label>
+      <label class="small">cycle <input id="wPeriod" type="number" value="5" min="2" max="15" step="0.5" style="width:52px"> s</label>
+    </div>
+    <div class="controls gp" data-g="crawl">
       <label class="small">lean <input id="wLean" type="number" value="15" min="0" max="25" step="1" style="width:52px"> mm</label>
-      <label class="small">speed <input id="wSpeed" type="number" value="0.5" min="0.25" max="3" step="0.25" style="width:56px"> x</label>
-      <label class="small">cycles <input id="wCycles" type="number" value="2" min="1" max="20" style="width:48px"></label>
+    </div>
+    <div class="controls gp" data-g="trot pace bound pronk sine-crawl">
+      <label class="small">f <input id="sFreq" type="number" value="0.5" min="0.1" max="2" step="0.1" style="width:52px"> Hz</label>
+      <label class="small">A hip <input id="sHip" type="number" value="10" min="0" max="35" step="1" style="width:52px"> °</label>
+      <label class="small">A knee <input id="sKnee" type="number" value="20" min="0" max="55" step="1" style="width:52px"> °</label>
+      <label class="small">knee phase <select id="sKPh"><option value="90">+90°</option><option value="-90">−90°</option></select></label>
+      <label class="small">knee lifts by <select id="sKDir"><option value="1">shin forward</option><option value="-1">shin back</option></select></label>
     </div>
     <div class="controls" style="margin-top:6px">
       <button onclick="post('/api/walk/check', walkParams())">Check</button>
-      <button onclick="ask('Move into the walking start position (one leg at a time, slowly)?') && post('/api/walk/ready', walkParams())">Get ready</button>
+      <button onclick="ask('Move into the start position (one leg at a time, slowly)?') && post('/api/walk/ready', walkParams())">Get ready</button>
       <button class="primary" onclick="startWalk()">Walk</button>
       <button onclick="post('/api/stop')">Stop</button>
       <span id="walkMsg" class="small"></span>
@@ -288,15 +312,35 @@ function goDeg(j) {
   if (Math.abs(v - now) > 30 && !ask(`That is a ${Math.abs(v - now).toFixed(0)} degree move for the ${st.name}. Go?`)) return;
   post('/api/goto', {joint:j, deg:v});
 }
+const GAIT_HINTS = {
+  'elephant': 'Like a real elephant: all four legs keep moving and the body never stops. Lateral sequence (rear left, front left, rear right, front right), pillar legs, and a gentle fore-aft rock so XIANG stays balanced on its narrow stance. Only one foot is ever in the air.',
+  'crawl': 'One leg at a time with a stop: the body leans away, the foot steps, the body moves on. Slowest and most cautious.',
+  'trot': 'Lecture 5 equation, theta = theta0 + s A sin(wt + b). Phases FL 0, FR 180, RL 180, RR 0: diagonal pairs. Two feet down at a time, so it relies on momentum: try it in the air first.',
+  'pace': 'Lecture 5 sine gait. Phases FL 0, FR 180, RL 0, RR 180: same-side pairs. Two feet down: try it in the air first.',
+  'bound': 'Lecture 5 sine gait. Phases FL 0, FR 0, RL 180, RR 180: front pair, then rear pair. Two feet down: try it in the air first.',
+  'pronk': 'Lecture 5 sine gait. All phases 0: all four legs together. Try it in the air first.',
+  'sine-crawl': 'Lecture 5 sine gait. Phases FL 0, FR 180, RL 90, RR 270: one leg at a time, but a sine only gives duty factor 0.5 (the lecture explains why the crawl breaks the sine).',
+};
+function showGaitParams() {
+  const g = $('#wGait').value;
+  document.querySelectorAll('.gp').forEach(d => d.hidden = !d.dataset.g.split(' ').includes(g));
+  $('#gHint').textContent = GAIT_HINTS[g] + '  Press Check (nothing moves), then Get ready, then Walk. Stop or Motors OFF at any time.';
+}
 function walkParams() {
-  return {stride: +$('#wStride').value, lift: +$('#wLift').value, lean: +$('#wLean').value,
-          speed: +$('#wSpeed').value, cycles: +$('#wCycles').value};
+  const g = $('#wGait').value, n = id => +$(id).value;
+  const p = {gait: g, cycles: n('#wCycles'), speed: n('#wSpeed')};
+  if (g === 'elephant') Object.assign(p, {stride: n('#wStride'), lift: n('#wLift'), rock: n('#wRock'), beta: n('#wBeta'), period: n('#wPeriod')});
+  else if (g === 'crawl') Object.assign(p, {stride: n('#wStride'), lift: n('#wLift'), lean: n('#wLean')});
+  else Object.assign(p, {freq: n('#sFreq') * n('#wSpeed'), a_hip: n('#sHip'), a_knee: n('#sKnee'),
+                         knee_phase: n('#sKPh'), knee_dir: n('#sKDir')});
+  return p;
 }
 function startWalk() {
-  const p = walkParams();
-  if (ask(`Walk ${p.cycles} cycle(s): stride ${p.stride} mm, lift ${p.lift} mm, lean ${p.lean} mm, speed x${p.speed}? ` +
-          'It first moves into the start position, one leg at a time.')) post('/api/walk', p);
+  const p = walkParams(), name = $('#wGait').selectedOptions[0].textContent;
+  if (ask(`Run "${name}" for ${p.cycles} cycle(s)? It first moves into the start position, one leg at a time.`))
+    post('/api/walk', p);
 }
+setTimeout(showGaitParams, 0);
 function toggleFree() {
   if (S.free) return post('/api/free', {on:false});
   if (ask('Turn on limit-test mode? Safe ranges are switched off, so a joint can be driven into the body or ' +

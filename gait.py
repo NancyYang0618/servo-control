@@ -212,3 +212,129 @@ if __name__ == "__main__":
     print("margins (mm):", [(l, round(m, 1)) for l, m in w["margins"]])
     for j, (lo, hi) in sorted(w["extremes"].items()):
         print(f"  {j:8s} {lo:+6.1f} .. {hi:+6.1f} deg from home")
+
+
+# ======================================================================================================
+# Elephant walk: all four legs move all the time (no stops), lateral sequence, pillar legs, fore-aft rock
+# ======================================================================================================
+# How a real elephant walks, and how XIANG copies it:
+#   * never stops: the body glides forward at a steady speed while the legs take turns
+#   * lateral sequence: rear left, front left, rear right, front right, a quarter cycle apart
+#   * high duty factor: each foot is on the ground most of the cycle (beta about 0.8), so 3 or 4 feet
+#     are always down and only one is ever in the air
+#   * pillar legs: a planted leg stays almost straight and the body rolls over it
+#   * rocking: XIANG's legs only swing forward and back, so it cannot sway sideways like an elephant.
+#     Instead the body rocks fore and aft in rhythm: forward while a rear foot is up, back while a front
+#     foot is up, holding there during the short swing (otherwise the narrow 92 mm track would tip).
+
+ELEPHANT = dict(stride=30.0, lift=15.0, rock=25.0, beta=0.85, lag=0.25, period=5.0, crouch=1.0,
+                speed=1.0, dt=0.1)
+
+
+def _ss(u):
+    u = min(1.0, max(0.0, u))
+    return u * u * (3 - 2 * u)
+
+
+def _elephant_offsets(lag):
+    return {"RL": 0.0, "FL": lag, "RR": 0.5, "FR": 0.5 + lag}
+
+
+def _rock(t, off, beta, amp):
+    """Body position (mm, + = forward over the feet) at cycle fraction t."""
+    ev = sorted(((o + beta) % 1.0, (amp if l[0] == "R" else -amp)) for l, o in off.items())
+    sw = 1 - beta
+    for k, (s0, v) in enumerate(ev):
+        d = (t - s0) % 1.0
+        if d <= sw:
+            return v
+        n_s, n_v = ev[(k + 1) % 4]
+        gap = (n_s - s0) % 1.0
+        if d < gap:
+            return v + (n_v - v) * _ss((d - sw) / (gap - sw))
+    return 0.0
+
+
+def plan_elephant(params=None, cycles=2):
+    p = dict(ELEPHANT)
+    p.update({k: float(v) for k, v in (params or {}).items() if k in ELEPHANT and v is not None})
+    S, beta, T = p["stride"], p["beta"], p["period"] / p["speed"]
+    off = _elephant_offsets(p["lag"])
+    reach = THIGH + LS - max(0.6, p["crouch"])
+    n = int(round(cycles * T / p["dt"]))
+    samples, ext, worst = [], {}, {l: float("inf") for l in LEGS}
+    for i in range(n + 1):
+        t = (i * p["dt"] / T) % 1.0 if i < n else 0.0
+        body = _rock(t, off, beta, p["rock"])
+        xs, lifted, row = {}, [], {}
+        for l, o in off.items():
+            phi = (t - o) % 1.0
+            if phi < beta:
+                x, z = S / 2 - S * phi / beta, 0.0
+            else:
+                u = (phi - beta) / (1 - beta)
+                x, z = -S / 2 + S * _ss(u), p["lift"] * math.sin(math.pi * u)
+            xs[l] = x - body
+            if z > 0.5:
+                lifted.append(l)
+            fx = FOOT_FWD + xs[l]
+            if abs(fx) >= reach - 1:
+                raise GaitError(f"{l}: foot {fx:.0f} mm from under the hip is out of reach; "
+                                "shorten the stride or the rock")
+            h, kn = ik(fx, -math.sqrt(reach ** 2 - fx ** 2) + z)
+            row[l] = (h, kn)
+            for name, v in (("hip", h), ("knee", kn)):
+                lo, hi = ext.get((l, name), (v, v))
+                ext[(l, name)] = (min(lo, v), max(hi, v))
+        if len(lifted) == 1:
+            worst[lifted[0]] = min(worst[lifted[0]], margin(xs, lifted[0]))
+        elif len(lifted) > 1:
+            worst[lifted[0]] = min(worst[lifted[0]], -99.0)       # two feet up: not statically stable
+        samples.append(row)
+    return dict(samples=samples, dt=p["dt"], params=p, margins=[(l, m) for l, m in worst.items() if m < 1e8],
+                extremes={f"{l}_{k}": v for (l, k), v in ext.items()}, seconds=n * p["dt"],
+                distance_mm=S * cycles)
+
+
+# ======================================================================================================
+# Open-loop sine gaits (Lecture 5): theta = theta0 + s * A * sin(w t + b)
+# ======================================================================================================
+# theta0 = each servo's home, s = its sign (left/right mirror), A = amplitude, w = 2 pi f, b = phase.
+# Hip makes the stride:  hip  = A_hip  * sin(w t + b)
+# Knee lifts the foot:   knee = A_knee * max(0, sin(w t + b + knee_phase))   (knee_phase +90 or -90 deg)
+# A gait is only the table of hip phases b (Hildebrand 1989; crawl after McGhee & Frank 1968).
+# A sine gives duty factor 0.5, so the crawl here is only an approximation (see the lecture).
+
+PHASES = {
+    "pronk": {"FL": 0, "FR": 0, "RL": 0, "RR": 0},
+    "bound": {"FL": 0, "FR": 0, "RL": 180, "RR": 180},
+    "pace":  {"FL": 0, "FR": 180, "RL": 0, "RR": 180},
+    "trot":  {"FL": 0, "FR": 180, "RL": 180, "RR": 0},
+    "crawl": {"FL": 0, "FR": 180, "RL": 90, "RR": 270},
+}
+SINE = dict(freq=0.5, a_hip=10.0, a_knee=20.0, knee_phase=90.0, knee_dir=1.0, dt=0.05)
+
+
+def plan_sine(gait_name, params=None, cycles=3):
+    if gait_name not in PHASES:
+        raise GaitError(f"unknown gait '{gait_name}' (choose {', '.join(PHASES)})")
+    p = dict(SINE)
+    p.update({k: float(v) for k, v in (params or {}).items() if k in SINE and v is not None})
+    w = 2 * math.pi * p["freq"]
+    n = int(round(cycles / p["freq"] / p["dt"]))
+    samples, ext = [], {}
+    for i in range(n + 1):
+        t = i * p["dt"]
+        row = {}
+        for l, b_deg in PHASES[gait_name].items():
+            b = math.radians(b_deg)
+            h = p["a_hip"] * math.sin(w * t + b)
+            k = p["knee_dir"] * p["a_knee"] * max(0.0, math.sin(w * t + b + math.radians(p["knee_phase"])))
+            row[l] = (h, k)
+            for name, v in (("hip", h), ("knee", k)):
+                lo, hi = ext.get((l, name), (v, v))
+                ext[(l, name)] = (min(lo, v), max(hi, v))
+        samples.append(row)
+    return dict(samples=samples, dt=p["dt"], params=p, margins=[], gait=gait_name,
+                extremes={f"{l}_{k}": v for (l, k), v in ext.items()}, seconds=n * p["dt"],
+                distance_mm=None)

@@ -336,13 +336,35 @@ class Panel:
 
     # ---------------------------------------------------------------- walking
     def walk_plan(self, b):
-        params = {k: b.get(k) for k in gait.DEFAULTS if b.get(k) not in (None, "")}
+        """b["gait"]: 'elephant' (continuous), 'crawl' (step by step), or a sine gait from the lecture:
+        'trot', 'pace', 'bound', 'pronk', 'sine-crawl'."""
+        g = b.get("gait", "elephant")
         cycles = max(1, min(20, int(b.get("cycles", 2))))
+        pick = lambda keys: {k: b.get(k) for k in keys if b.get(k) not in (None, "")}
         try:
-            w = gait.plan(params, cycles=cycles)
+            if g == "crawl":
+                w = gait.plan(pick(gait.DEFAULTS), cycles=cycles)
+            elif g == "elephant":
+                w = gait.plan_elephant(pick(gait.ELEPHANT), cycles=cycles)
+            else:
+                w = gait.plan_sine("crawl" if g == "sine-crawl" else g, pick(gait.SINE), cycles=cycles)
         except gait.GaitError as e:
             return None, [str(e)], cycles
+        w["name"] = g
         return w, gait.check(w, self.cfg["servos"]), cycles
+
+    @staticmethod
+    def walk_summary(w, cycles):
+        hip = max(max(abs(a), abs(c)) for j, (a, c) in w["extremes"].items() if j.endswith("hip"))
+        knee = max(max(abs(a), abs(c)) for j, (a, c) in w["extremes"].items() if j.endswith("knee"))
+        txt = f"'{w['name']}': {cycles} cycle(s) in {w['seconds']:.0f} s"
+        if w.get("distance_mm"):
+            txt += f", {w['distance_mm']:.0f} mm ({w['distance_mm'] / w['seconds'] / 10:.2f} cm/s)"
+        if w["margins"]:
+            txt += f". Balance margin at least {min(m for _, m in w['margins']):.0f} mm"
+        else:
+            txt += ". Open-loop sine gait: balance is not checked (2 or 0 feet down at times), try it in the air first"
+        return txt + f". Joints up to {hip:.0f} deg (hips) and {knee:.0f} deg (knees)."
 
     def walk_check(self, b):
         """Plan the walk and report, nothing moves."""
@@ -352,12 +374,7 @@ class Panel:
         if probs:
             self.event("warn", "WALK_CHECK", "This walk can't run: " + "; ".join(probs))
             return
-        m = min(x for _, x in w["margins"])
-        hip = max(max(abs(a), abs(c)) for j, (a, c) in w["extremes"].items() if j.endswith("hip"))
-        knee = max(max(abs(a), abs(c)) for j, (a, c) in w["extremes"].items() if j.endswith("knee"))
-        self.event("info", "WALK_CHECK", f"Walk OK: {cycles} cycle(s), {w['distance_mm']:.0f} mm in {w['seconds']:.0f} s "
-                   f"({w['distance_mm'] / w['seconds'] / 10:.2f} cm/s). Balance margin at least {m:.0f} mm. "
-                   f"Joints up to {hip:.0f} deg (hips) and {knee:.0f} deg (knees).")
+        self.event("info", "WALK_CHECK", "Walk OK: " + self.walk_summary(w, cycles))
 
     def _walk(self, b, ready_only=False):
         w, probs, cycles = self.walk_plan(b)
@@ -372,13 +389,13 @@ class Panel:
             self.event("info" if ok else "warn", "WALK", "Ready to walk: standing in the start position."
                        if ok else "Could not reach the start position: see the results table.")
             return
-        self.event("info", "WALK", f"Walking {cycles} cycle(s), {w['distance_mm']:.0f} mm, about {w['seconds']:.0f} s.")
+        self.event("info", "WALK", "Walking " + self.walk_summary(w, cycles))
         r = self.robot.play(frames, w["dt"], progress=lambda m: self.event("info", "WALK", m, every_s=2))
         if r.get("rows"):
             self.last_test = dict(kind="Walk: get ready", time=time.strftime("%H:%M:%S"), ok=False, rows=r["rows"])
         if r["ok"]:
             lag = max(r["worst"].values()) if r.get("worst") else 0
-            self.event("info", "WALK_DONE", f"Walk finished: {w['distance_mm']:.0f} mm planned. Worst joint lag "
+            self.event("info", "WALK_DONE", f"Walk finished ('{w['name']}'). Worst joint lag "
                        f"{lag:.1f} deg, lowest supply {r['vmin']:.2f} V.",
                        "Lag over about 8 deg means the motors could not keep up: lower the speed." if lag > 8 else "")
         else:
