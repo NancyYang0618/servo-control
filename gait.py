@@ -68,7 +68,7 @@ def ik(x, z, bend=None):
     return math.degrees(th), math.degrees(ph - BETA - th)
 
 
-def margin(feet_x, lifted):
+def margin(feet_x, lifted, cog=(0.0, 0.0)):
     """Stability margin (mm) with `lifted` in the air: distance from the body centre to the nearest edge
     of the triangle of the other three feet. feet_x: {leg: x relative to its NEUTRAL foot spot}."""
     pts = [(HIPS[l][0] + FOOT_FWD + feet_x[l], HIPS[l][1]) for l in LEGS if l != lifted]
@@ -77,7 +77,7 @@ def margin(feet_x, lifted):
         (x1, y1), (x2, y2), (x3, y3) = pts[i], pts[(i + 1) % 3], pts[(i + 2) % 3]
         cr = lambda px, py: (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
         side = 1 if cr(x3, y3) > 0 else -1
-        best = min(best, side * cr(0.0, 0.0) / math.hypot(x2 - x1, y2 - y1))
+        best = min(best, side * cr(*cog) / math.hypot(x2 - x1, y2 - y1))
     return best
 
 
@@ -227,8 +227,11 @@ if __name__ == "__main__":
 #     Instead the body rocks fore and aft in rhythm: forward while a rear foot is up, back while a front
 #     foot is up, holding there during the short swing (otherwise the narrow 92 mm track would tip).
 
-ELEPHANT = dict(stride=30.0, lift=15.0, rock=25.0, beta=0.85, lag=0.25, period=5.0, crouch=1.0,
-                speed=1.0, dt=0.1)
+ELEPHANT = dict(stride=30.0, lift=15.0, rock_rear=35.0, rock_front=15.0, beta=0.85, lag=0.25, period=5.0,
+                crouch=1.0, speed=1.0, dt=0.1, cog_y=0.0)
+# rock_rear: how far the body moves forward while a rear foot is up; rock_front: how far back while a front
+# foot is up. Unequal is better (2026-11-17 search: 35 / 15 gives 19 mm margin vs 12 mm for 25 / 25).
+# cog_y: how far the weight centre sits to the LEFT (mm, + = left), used only to report balance margins.
 
 
 def _ss(u):
@@ -240,9 +243,10 @@ def _elephant_offsets(lag):
     return {"RL": 0.0, "FL": lag, "RR": 0.5, "FR": 0.5 + lag}
 
 
-def _rock(t, off, beta, amp):
+def _rock(t, off, beta, amp_rear, amp_front=None):
     """Body position (mm, + = forward over the feet) at cycle fraction t."""
-    ev = sorted(((o + beta) % 1.0, (amp if l[0] == "R" else -amp)) for l, o in off.items())
+    amp_front = amp_rear if amp_front is None else amp_front
+    ev = sorted(((o + beta) % 1.0, (amp_rear if l[0] == "R" else -amp_front)) for l, o in off.items())
     sw = 1 - beta
     for k, (s0, v) in enumerate(ev):
         d = (t - s0) % 1.0
@@ -265,7 +269,7 @@ def plan_elephant(params=None, cycles=2):
     samples, ext, worst = [], {}, {l: float("inf") for l in LEGS}
     for i in range(n + 1):
         t = (i * p["dt"] / T) % 1.0 if i < n else 0.0
-        body = _rock(t, off, beta, p["rock"])
+        body = _rock(t, off, beta, p["rock_rear"], p["rock_front"])
         xs, lifted, row = {}, [], {}
         for l, o in off.items():
             phi = (t - o) % 1.0
@@ -287,7 +291,7 @@ def plan_elephant(params=None, cycles=2):
                 lo, hi = ext.get((l, name), (v, v))
                 ext[(l, name)] = (min(lo, v), max(hi, v))
         if len(lifted) == 1:
-            worst[lifted[0]] = min(worst[lifted[0]], margin(xs, lifted[0]))
+            worst[lifted[0]] = min(worst[lifted[0]], margin(xs, lifted[0], cog=(0.0, p["cog_y"])))
         elif len(lifted) > 1:
             worst[lifted[0]] = min(worst[lifted[0]], -99.0)       # two feet up: not statically stable
         samples.append(row)

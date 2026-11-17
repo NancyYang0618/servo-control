@@ -130,7 +130,9 @@
       <label class="small">foot lift <input id="wLift" type="number" value="15" min="5" max="30" step="1" style="width:52px"> mm</label>
     </div>
     <div class="controls gp" data-g="elephant">
-      <label class="small">rock <input id="wRock" type="number" value="25" min="0" max="35" step="1" style="width:52px"> mm</label>
+      <label class="small">rock fwd (rear step) <input id="wRockR" type="number" value="35" min="0" max="45" step="1" style="width:52px"> mm</label>
+      <label class="small">rock back (front step) <input id="wRockF" type="number" value="15" min="0" max="45" step="1" style="width:52px"> mm</label>
+      <label class="small">weight left of centre <input id="wCogY" type="number" value="0" min="-30" max="30" step="1" style="width:52px"> mm</label>
       <label class="small">foot down <input id="wBeta" type="number" value="0.85" min="0.6" max="0.95" step="0.05" style="width:58px"> of the cycle</label>
       <label class="small">cycle <input id="wPeriod" type="number" value="5" min="2" max="15" step="0.5" style="width:52px"> s</label>
     </div>
@@ -329,7 +331,7 @@ function showGaitParams() {
 function walkParams() {
   const g = $('#wGait').value, n = id => +$(id).value;
   const p = {gait: g, cycles: n('#wCycles'), speed: n('#wSpeed')};
-  if (g === 'elephant') Object.assign(p, {stride: n('#wStride'), lift: n('#wLift'), rock: n('#wRock'), beta: n('#wBeta'), period: n('#wPeriod')});
+  if (g === 'elephant') Object.assign(p, {stride: n('#wStride'), lift: n('#wLift'), rock_rear: n('#wRockR'), rock_front: n('#wRockF'), cog_y: n('#wCogY'), beta: n('#wBeta'), period: n('#wPeriod')});
   else if (g === 'crawl') Object.assign(p, {stride: n('#wStride'), lift: n('#wLift'), lean: n('#wLean')});
   else Object.assign(p, {freq: n('#sFreq') * n('#wSpeed'), a_hip: n('#sHip'), a_knee: n('#sKnee'),
                          knee_phase: n('#sKPh'), knee_dir: n('#sKDir')});
