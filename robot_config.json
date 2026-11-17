@@ -24,22 +24,22 @@
     "RL_hip": {
       "id": 5,
       "home": 110.9,
-      "sign": -1
+      "sign": 1
     },
     "RL_knee": {
       "id": 6,
       "home": 133.4,
-      "sign": 1
+      "sign": -1
     },
     "RR_hip": {
       "id": 7,
       "home": 154.3,
-      "sign": 1
+      "sign": -1
     },
     "RR_knee": {
       "id": 8,
       "home": 114.7,
-      "sign": -1
+      "sign": 1
     }
   },
   "swing_deg": {
@@ -62,5 +62,5 @@
     "warn": 55,
     "stop": 60
   },
-  "sign_note": "sign: +1 if a + servo move swings the foot toward the head (hip) / swings the shin toward the head (knee). Found by Nancy 2026-11-10."
+  "sign_note": "sign: +1 if a + servo move swings the foot toward the head (hip) / swings the shin toward the head (knee). Front legs found by Nancy 2026-11-10; rear legs corrected 2026-11-16 with the lecture 5 mirror test (rear legs are mounted turned around)."
 }
