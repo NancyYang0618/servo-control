@@ -346,6 +346,8 @@ class Panel:
                 w = gait.plan(pick(gait.DEFAULTS), cycles=cycles)
             elif g == "elephant":
                 w = gait.plan_elephant(pick(gait.ELEPHANT), cycles=cycles)
+            elif g == "diagonal":
+                w = gait.plan_diagonal(pick(gait.DIAGONAL), cycles=cycles)
             else:
                 w = gait.plan_sine("crawl" if g == "sine-crawl" else g, pick(gait.SINE), cycles=cycles)
         except gait.GaitError as e:
@@ -363,7 +365,8 @@ class Panel:
         if w["margins"]:
             txt += f". Balance margin at least {min(m for _, m in w['margins']):.0f} mm"
         else:
-            txt += ". Open-loop sine gait: balance is not checked (2 or 0 feet down at times), try it in the air first"
+            txt += (". Balance is dynamic (2 feet down at times) so it is not checked: try it in the air first, "
+                    "then on the ground with your hands ready")
         return txt + f". Joints up to {hip:.0f} deg (hips) and {knee:.0f} deg (knees)."
 
     def walk_check(self, b):

@@ -228,7 +228,7 @@ if __name__ == "__main__":
 #     foot is up, holding there during the short swing (otherwise the narrow 92 mm track would tip).
 
 ELEPHANT = dict(stride=30.0, lift=15.0, rock_rear=35.0, rock_front=15.0, beta=0.85, lag=0.25, period=5.0,
-                crouch=1.0, speed=1.0, dt=0.1, cog_y=0.0)
+                crouch=1.0, speed=1.0, dt=0.1, cog_y=0.0, foot_shift=0.0)
 # rock_rear: how far the body moves forward while a rear foot is up; rock_front: how far back while a front
 # foot is up. Unequal is better (2026-11-17 search: 35 / 15 gives 19 mm margin vs 12 mm for 25 / 25).
 # cog_y: how far the weight centre sits to the LEFT (mm, + = left), used only to report balance margins.
@@ -259,11 +259,31 @@ def _rock(t, off, beta, amp_rear, amp_front=None):
     return 0.0
 
 
-def plan_elephant(params=None, cycles=2):
+DIAGONAL = dict(ELEPHANT, beta=0.75, rock_rear=0.0, rock_front=0.0, period=4.0, foot_shift=10.0)
+# Diagonal pairs (Nancy's idea, 2026-11-17): front-left + rear-right step together, then front-right + rear-left.
+# Same footfall pairs as the Lecture 5 trot, but slow and with all four feet down between the pairs.
+# While a pair is up the robot stands on a diagonal LINE, so balance is dynamic (not checked statically):
+# keep the swing short (beta 0.75 = each pair in the air a quarter of the cycle).
+
+
+def _diagonal_offsets(beta):
+    first = (0.05 - beta) % 1.0              # front-left + rear-right lift first, shortly after the start
+    return {"FL": first, "RR": first, "FR": (first + 0.5) % 1.0, "RL": (first + 0.5) % 1.0}
+
+
+def plan_diagonal(params=None, cycles=2):
+    p = dict(DIAGONAL)
+    p.update({k: float(v) for k, v in (params or {}).items() if k in DIAGONAL and v is not None})
+    w = plan_elephant(p, cycles, _diagonal=True)
+    w["margins"] = []                        # two feet down at times: balance is dynamic, not checked
+    return w
+
+
+def plan_elephant(params=None, cycles=2, _diagonal=False):
     p = dict(ELEPHANT)
     p.update({k: float(v) for k, v in (params or {}).items() if k in ELEPHANT and v is not None})
     S, beta, T = p["stride"], p["beta"], p["period"] / p["speed"]
-    off = _elephant_offsets(p["lag"])
+    off = _diagonal_offsets(beta) if _diagonal else _elephant_offsets(p["lag"])
     reach = THIGH + LS - max(0.6, p["crouch"])
     n = int(round(cycles * T / p["dt"]))
     samples, ext, worst = [], {}, {l: float("inf") for l in LEGS}
@@ -278,7 +298,7 @@ def plan_elephant(params=None, cycles=2):
             else:
                 u = (phi - beta) / (1 - beta)
                 x, z = -S / 2 + S * _ss(u), p["lift"] * math.sin(math.pi * u)
-            xs[l] = x - body
+            xs[l] = x - body + p["foot_shift"]
             if z > 0.5:
                 lifted.append(l)
             fx = FOOT_FWD + xs[l]
