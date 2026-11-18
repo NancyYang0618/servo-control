@@ -65,6 +65,23 @@
   #log div { padding:5px 8px; border-bottom:1px solid var(--line); font-size:14px; }
   #log .t { color:var(--muted); margin-right:6px; font-variant-numeric:tabular-nums; }
   .table-wrap { overflow-x:auto; }
+  .cards2 { display:grid; grid-template-columns:1.25fr 1fr; gap:14px; margin-bottom:12px; }
+  @media (max-width:760px) { .cards2 { grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .card h3 { margin:0; font-size:16px; }
+  .chead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .hgrid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; }
+  @media (max-width:520px) { .hgrid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .hitem { border:1px solid var(--line); border-radius:9px; padding:7px 9px; background:var(--bg); }
+  .hitem .k { font-size:12px; color:var(--muted); }
+  .hitem .v { font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .hitem.okb { border-color:#b4e0c3; } .hitem.warnb { border-color:#f0d398; background:#fdf6e6; }
+  .hitem.badb { border-color:#f3b8b2; background:#fdeceb; }
+  .sdsteps { margin:0; padding-left:20px; font-size:14px; }
+  .sdsteps li { margin:3px 0; }
+  .sdsteps .st { font-size:12px; font-weight:600; margin-left:6px; }
+  .st.waiting { color:var(--muted); } .st.running { color:var(--blue); } .st.done { color:var(--green); }
+  .st.warning { color:var(--amber); }
   #dlg { position:fixed; inset:0; background:rgba(43,38,34,.35); display:flex; align-items:center;
          justify-content:center; z-index:50; padding:16px; }
   #dlg[hidden] { display:none; }
@@ -105,6 +122,29 @@
 <div id="freeBanner" hidden>LIMIT-TEST MODE: safe ranges are off. Move in small steps near a limit; if a joint stops
   short it is blocked, so back it off 2 to 5&deg; right away, then press <b>Mark limit here</b>.</div>
 <main>
+  <div class="cards2">
+    <section class="card" id="healthCard">
+      <div class="chead"><h3>Robot health</h3><span id="hLive" class="pill ok">monitor running</span></div>
+      <p class="hint" style="margin:2px 0 8px">Checked every second: every servo answers, supply voltage, motor
+        temperatures, and the Raspberry Pi's own power and temperature. Warnings appear below in plain language.</p>
+      <div class="hgrid" id="hGrid"></div>
+      <div class="controls" style="margin-top:8px">
+        <button onclick="post('/api/boot_test',{motion:false})">Run health test</button>
+        <button onclick="ask('Health test with wiggle: each servo moves 4 degrees and back, one at a time. Robot on its stand?') && post('/api/boot_test',{motion:true})">Health test + wiggle</button>
+        <span class="small" id="hLast"></span>
+      </div>
+    </section>
+    <section class="card" id="sdCard">
+      <div class="chead"><h3>Shutdown routine</h3><span id="sdState" class="pill">ready</span></div>
+      <p class="hint" style="margin:2px 0 8px">Safe power-down in order, so the robot never drops and the SD card
+        is never cut off mid-write.</p>
+      <ol class="sdsteps" id="sdSteps"></ol>
+      <div class="controls" style="margin-top:8px">
+        <button class="stop" onclick="ask('Shut down the robot? It stops, homes every leg one at a time, switches the motors off, then shuts the Raspberry Pi down.') && post('/api/shutdown',{pi:true})">Shut down robot</button>
+        <button onclick="ask('Home every leg and switch the motors off, but leave the Pi on?') && post('/api/shutdown',{pi:false})">Park (keep Pi on)</button>
+      </div>
+    </section>
+  </div>
   <div id="problems"></div>
   <div class="legs" id="legs"></div>
 
@@ -336,6 +376,34 @@ function showGaitParams() {
   document.querySelectorAll('.gp').forEach(d => d.hidden = !d.dataset.g.split(' ').includes(g));
   $('#gHint').textContent = GAIT_HINTS[g] + '  Press Check (nothing moves), then Get ready, then Walk. Stop or Motors OFF at any time.';
 }
+const SD_DEFAULT = ['Stop any walk or sequence', 'Home every leg, one at a time, slowly',
+                    'Switch every motor off', 'Shut the Raspberry Pi down safely'];
+function renderHealth() {
+  const H = S.health || {}, js = Object.values(S.joints);
+  const item = (k, v, cls) => `<div class="hitem ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const vs = js.filter(j => j.ok && j.volts).map(j => j.volts).sort((a, b) => a - b);
+  const vmid = vs.length ? vs[Math.floor(vs.length / 2)] : null;
+  const ans = H.answering ?? 0, tmax = H.temp_max;
+  $('#hGrid').innerHTML =
+    item('Servos answering', `${ans} / 8`, ans === 8 ? 'okb' : 'badb') +
+    item('Servo supply', vmid ? `${vmid.toFixed(2)} V` : '?', !vmid ? 'badb' : (vmid < 6 || vmid > 8.4) ? 'warnb' : 'okb') +
+    item('Hottest motor', tmax != null ? `${tmax} °C` : '?', tmax == null ? '' : tmax >= 55 ? 'badb' : tmax >= 45 ? 'warnb' : 'okb') +
+    item('Pi power', H.pi_low == null ? '?' : H.pi_low ? 'LOW now' : (H.pi_low_ever ? 'OK (dipped earlier)' : 'OK'),
+         H.pi_low ? 'badb' : H.pi_low_ever ? 'warnb' : H.pi_low == null ? '' : 'okb') +
+    item('Pi temperature', H.pi_temp != null ? `${H.pi_temp.toFixed(1)} °C` : '?', H.pi_temp >= 75 ? 'warnb' : H.pi_temp ? 'okb' : '') +
+    item('USB link', S.connected ? 'connected' : 'reconnecting', S.connected ? 'okb' : 'badb');
+  const T = S.last_test;
+  const bt = T && /Boot test/.test(T.kind) ? ` · last health test ${T.time}: ${T.ok ? 'passed' : 'found problems'}` : '';
+  $('#hLast').textContent = `${(H.checks || 0).toLocaleString()} checks, last at ${H.last || '-'}` + bt;
+  $('#hLive').textContent = H.last ? `monitor running · ${H.last}` : 'monitor starting';
+  const sd = S.shutdown || {}, steps = (sd.steps && sd.steps.length) ? sd.steps : SD_DEFAULT.map(n => ({name: n, state: 'waiting'}));
+  $('#sdSteps').innerHTML = steps.map(st => `<li>${esc(st.name)}<span class="st ${st.state}">${st.state === 'waiting' ? '' : st.state}</span>` +
+    (st.note ? ` <span class="hint">${esc(st.note)}</span>` : '') + '</li>').join('');
+  const running = S.busy === 'robot shutdown';
+  const doneAll = sd.steps && sd.steps.length && sd.steps.every(x => x.state === 'done' || x.state === 'warning');
+  $('#sdState').className = 'pill ' + (running ? 'busy' : doneAll ? 'ok' : '');
+  $('#sdState').textContent = running ? 'running' : doneAll ? `finished ${sd.time || ''}` : 'ready';
+}
 function walkParams() {
   const g = $('#wGait').value, n = id => +$(id).value;
   const p = {gait: g, cycles: n('#wCycles'), speed: n('#wSpeed')};
@@ -467,7 +535,7 @@ function render() {
   $('#freeBanner').hidden = !S.free;
   $('#busy').hidden = !S.busy; $('#busy').textContent = S.busy ? `running: ${S.busy}` : '';
   document.querySelectorAll('header button, .leg button, section button').forEach(b => {
-    if (!['Stop','Motors OFF','Reconnect'].includes(b.textContent) && b.id !== 'freeBtn') b.disabled = !!S.busy || !S.connected;
+    if (!['Stop','Motors OFF','Reconnect','Shut down robot'].includes(b.textContent) && b.id !== 'freeBtn') b.disabled = !!S.busy || !S.connected;
   });
 
   $('#problems').innerHTML = S.problems.map(([lvl,msg,hint]) =>
@@ -504,6 +572,7 @@ function render() {
     }
   }
 
+  renderHealth();
   renderPoses();
   const wm = S.events.find(e => /^(Walk|Ready to walk|Walking|Getting ready|This walk)/.test(e.msg));
   $('#walkMsg').textContent = wm ? `${wm.t}  ${wm.msg}` : '';

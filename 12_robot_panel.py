@@ -53,6 +53,8 @@ class Panel:
         self.state = {j: dict(ok=False, angle=None, volts=None, temp=None, motor=None, target=None)
                       for j in JOINT_ORDER}
         self.last_test = None             # dict(kind, time, ok, rows)
+        self.health = dict(checks=0, last=None, pi_temp=None, pi_low=None, pi_low_ever=False, started=time.time())
+        self.shutdown = dict(step=None, steps=[])
         self.poses = load_poses()
         self.seq = dict(running=False, pose=None, step=0, steps=0, loop=0, loops=0)
 
@@ -409,6 +411,55 @@ class Panel:
         for j, a in frames[-1].items():
             self.state[j]["target"] = a
 
+    # ---------------------------------------------------------------- shutdown routine
+    SHUTDOWN_STEPS = ["Stop any walk or sequence", "Home every leg, one at a time, slowly",
+                      "Switch every motor off", "Shut the Raspberry Pi down safely"]
+
+    def _shutdown(self, power_off_pi):
+        sd = self.shutdown
+        steps = self.SHUTDOWN_STEPS if power_off_pi else self.SHUTDOWN_STEPS[:3]
+        sd.update(steps=[dict(name=n, state="waiting") for n in steps], step=0, time=time.strftime("%H:%M:%S"))
+
+        def mark(i, state, note=""):
+            sd["steps"][i].update(state=state, note=note)
+            sd["step"] = i
+        mark(0, "running")
+        self.robot.stop.clear()
+        mark(0, "done", "nothing else running")
+        mark(1, "running")
+        self.event("info", "SHUTDOWN", "Shutdown routine: homing every leg before the motors switch off.")
+        ok, rows = self.robot.home(speed=20, progress=lambda m: self.event("info", "SHUTDOWN", m))
+        self.last_test = dict(kind="Shutdown: homing", time=time.strftime("%H:%M:%S"), ok=ok, rows=rows)
+        mark(1, "done" if ok else "warning", "all legs home" if ok else "some joints did not reach home: see table")
+        mark(2, "running")
+        self.robot.all_off()
+        for j in JOINT_ORDER:
+            self.state[j]["target"] = None
+        mark(2, "done", "all 8 motors limp")
+        if not power_off_pi:
+            self.event("info", "SHUTDOWN", "Shutdown routine finished: legs home, motors off. The Pi stays on.")
+            return
+        mark(3, "running", "the Pi powers down in 5 s; this page will stop updating")
+        self.event("warn", "SHUTDOWN", "Shutting the Raspberry Pi down in 5 s. Wait until its green light stops "
+                   "blinking before you unplug the battery.")
+        threading.Timer(5.0, self._power_off).start()
+
+    def _power_off(self):
+        import subprocess
+        try:
+            subprocess.run(["sudo", "-n", "shutdown", "-h", "now"], timeout=10)
+        except Exception as e:
+            self.event("error", "SHUTDOWN", f"Could not shut the Pi down: {e}", "Run: sudo shutdown -h now")
+
+    def start_shutdown(self, power_off_pi=True):
+        if self.busy and self.robot:
+            self.robot.stop.set()              # stop the walk / sequence first; the routine starts once it ends
+            for _ in range(50):
+                if not self.busy:
+                    break
+                time.sleep(0.1)
+        self.run_routine("robot shutdown", self._shutdown, power_off_pi)
+
     # ---------------------------------------------------------------- routines
     def run_routine(self, name, fn, *args):
         if not self.robot:
@@ -645,12 +696,39 @@ class Panel:
                     busy=self.busy, joints=joints, legs=LEGS, leg_names=LEG_NAMES,
                     vmin=min(vs) if vs else None, problems=self.problems(),
                     poses=self.poses, seq=self.seq, free=bool(self.robot and self.robot.free),
-                    last_test=self.last_test, events=list(self.events)[:80])
+                    last_test=self.last_test, events=list(self.events)[:80],
+                    health=dict(self.health, uptime_s=int(time.time() - self.health["started"]),
+                                temp_max=max((s["temp"] for s in self.state.values() if s["temp"] is not None),
+                                             default=None),
+                                answering=sum(1 for s in self.state.values() if s["ok"])),
+                    shutdown=self.shutdown)
+
+    def pi_health(self):
+        """The Pi's own health: under-voltage now / since boot, CPU temperature. Cheap (about 20 ms)."""
+        import subprocess
+        h = self.health
+        try:
+            th = int(subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True,
+                                    timeout=1).stdout.strip().split("=")[1], 16)
+            h["pi_low"], h["pi_low_ever"] = bool(th & 0x1), bool(th & 0x10000)
+            tc = subprocess.run(["vcgencmd", "measure_temp"], capture_output=True, text=True, timeout=1).stdout
+            h["pi_temp"] = float(tc.split("=")[1].split("'")[0])
+        except Exception:
+            pass
+        if h["pi_low"]:
+            self.event("warn", "PI_LOW", "The Pi's own power supply is sagging (under-voltage).",
+                       "The motors are drawing too much from the shared battery. Slow down or rest the motors.",
+                       every_s=20)
 
     def monitor(self):
+        """Continuous health monitor: every second it reads all 8 servos (answering, voltage, temperature)
+        and the Pi's own power and temperature, and raises plain-language warnings."""
         last_try = 0.0
         while True:
             time.sleep(POLL_S)
+            self.pi_health()
+            self.health["checks"] += 1
+            self.health["last"] = time.strftime("%H:%M:%S")
             if not self.robot and not self.busy and time.time() - last_try > 3.0:
                 last_try = time.time()
                 if find_port():                    # BusLinker is plugged in (again): reconnect by itself
@@ -718,6 +796,8 @@ class Handler(BaseHTTPRequestHandler):
                 P.run_routine("walking", P._walk, b, False)
             elif p == "/api/blink":
                 P.blink(b["joint"])
+            elif p == "/api/shutdown":
+                threading.Thread(target=P.start_shutdown, args=(bool(b.get("pi", True)),), daemon=True).start()
             elif p == "/api/off":
                 P.motors_off()
             elif p == "/api/stop":
